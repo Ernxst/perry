@@ -45,6 +45,7 @@ ul, ol { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-lef
 button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: #fff; color: #000; }
 a { color: rgb(0, 104, 218); align-self: flex-start; }
 img { align-self: flex-start; object-fit: fill; }
+iframe { align-self: flex-start; border: 0; }
 progress, meter { appearance: none; align-self: flex-start; width: 150px; height: 6px; border: 0; border-radius: 3px; background: rgba(0, 0, 0, 0.12); overflow: hidden; }
 progress::-webkit-progress-bar, meter::-webkit-meter-bar { background: transparent; border: 0; height: 6px; }
 progress::-webkit-progress-value, meter::-webkit-meter-optimum-value { background: rgb(0, 104, 218); }

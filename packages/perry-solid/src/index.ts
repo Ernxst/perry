@@ -5,7 +5,7 @@ import {
   Image, ImageFile, ProgressView, AttributedText, attributedTextAppend, attributedTextClear,
   textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetFontFamily, textSetColor, textSetDecoration,
   textfieldSetString, textareaSetString, toggleSetState, pickerAddItem, pickerSetSelected, datePickerSetDate,
-  textfieldSetOnSubmit,
+  textfieldSetOnSubmit, WebView, webviewLoadUrl,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
@@ -46,6 +46,8 @@ const TEXTAREA_HEIGHT = 60;
 const PROGRESS_WIDTH = 150;
 const PROGRESS_HEIGHT = 6;
 const SPINNER_SIZE = 16;
+// The web's default iframe size.
+const FRAME = { width: 300, height: 150 };
 // A list item's marker sits in this width, as the web's list padding holds its marker.
 const MARKER_WIDTH = 14;
 const LIST_GAP = 4;
@@ -305,6 +307,42 @@ function setImageProperty(image: Picture, name: string, value: unknown): boolean
   }
 }
 
+// An <iframe> is a stack holding a WebView, which is made when src is first set, since
+// Perry's WebView takes its first URL when created.
+interface Frame {
+  wrapper: Widget;
+  view: Widget;
+  width: number;
+  height: number;
+}
+const frames = new Map<number, Frame>();
+
+function sizeFrame(frame: Frame): void {
+  widgetSetWidth(frame.wrapper, frame.width);
+  widgetSetHeight(frame.wrapper, frame.height);
+  if (frame.view === 0) return;
+  widgetSetWidth(frame.view, frame.width);
+  widgetSetHeight(frame.view, frame.height);
+}
+
+function setFrameProperty(frame: Frame, name: string, value: unknown): boolean {
+  switch (name) {
+    case "src": {
+      const url = value == null ? "about:blank" : String(value);
+      if (frame.view !== 0) webviewLoadUrl(frame.view, url);
+      else {
+        frame.view = WebView({ url, width: frame.width, height: frame.height });
+        widgetAddChild(frame.wrapper, frame.view);
+        sizeFrame(frame);
+      }
+      return true;
+    }
+    case "width": frame.width = numeric(value, FRAME.width); sizeFrame(frame); return true;
+    case "height": frame.height = numeric(value, FRAME.height); sizeFrame(frame); return true;
+    default: return false;
+  }
+}
+
 function showBar(bar: Bar): void {
   const indeterminate = bar.value == null && !bar.meter;
   widgetSetHidden(bar.track, indeterminate ? 1 : 0);
@@ -515,6 +553,13 @@ const driver: NativeDriver = {
         return wrapper;
       }
       case "Progress": return createBar(tag === "meter");
+      case "Frame": {
+        const wrapper = NativeHStack(0, []);
+        const frame: Frame = { wrapper, view: 0, ...FRAME };
+        frames.set(wrapper, frame);
+        sizeFrame(frame);
+        return wrapper;
+      }
       case "Button": return Button("", () => emit("onClick", { value: "", checked: false }));
       case "Divider": return Divider();
       case "Canvas": return BloomView(0, 0);
@@ -547,6 +592,8 @@ const driver: NativeDriver = {
     if (image && setImageProperty(image, name, value)) return;
     const bar = bars.get(handle);
     if (bar && setBarProperty(bar, name, value)) return;
+    const frame = frames.get(handle);
+    if (frame && setFrameProperty(frame, name, value)) return;
     const disclosure = disclosures.get(handle);
     if (disclosure && name === "open") {
       disclosure.open = !!value;

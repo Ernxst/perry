@@ -4,7 +4,7 @@ import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Acce
 
 export type ElementName =
   | "VStack" | "HStack" | "ZStack" | "Spacer" | "ScrollView"
-  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Details" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
+  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Details" | "Frame" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
 
 /** What a native control reports to the `onInput` and `onChange` handlers, as `event.currentTarget`. */
 export interface ControlState {
@@ -78,7 +78,7 @@ const kinds: Record<string, ElementName> = {
   div: "VStack", main: "VStack", header: "VStack", footer: "VStack", nav: "VStack", section: "VStack",
   article: "VStack", aside: "VStack", figure: "VStack", search: "VStack", menu: "VStack", form: "VStack", fieldset: "VStack",
   ul: "VStack", ol: "VStack", li: "ListItem", details: "Details", summary: "Text",
-  button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress", meter: "Progress", output: "Text",
+  button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress", meter: "Progress", output: "Text", iframe: "Frame",
   input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label",
 };
 

@@ -119,6 +119,8 @@ export namespace JSX {
     progress: Common & { value?: number; max?: number };
     /** Drawn as `progress` is; `low`, `high` and `optimum` aren't supported. */
     meter: Common & { value?: number; min?: number; max?: number };
+    /** Natively a WebKit view with its own cookies and storage. 300 by 150 pixels unless sized. */
+    iframe: Common & { src?: string; width?: number; height?: number };
     canvas: Common & {
       ref?: HTMLCanvasElement | ((element: HTMLCanvasElement) => void);
       width?: number;
