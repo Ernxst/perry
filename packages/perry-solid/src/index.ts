@@ -6,7 +6,7 @@ import {
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
-  widgetSetBackgroundColor, setCornerRadius, setPadding,
+  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth,
   type Widget,
 } from "perry/ui";
 import { CanvasElement } from "perry-browser";
@@ -63,6 +63,10 @@ let nextOption = -1;
 const canvases = new Map<number, CanvasElement>();
 // A <label> natively is a stack; clicking its text flips the checkbox inside it, as on the web.
 const labels = new Map<number, { control: number }>();
+// A vertical NSStackView lets text run through its trailing padding. Perry's max-width
+// slot holds a child inside both paddings, so text in a column goes into one.
+const columns = new Set<number>();
+const texts = new Set<number>();
 
 const REBUILDS: Record<Control["kind"], string[]> = {
   Input: ["type", "placeholder", "min", "max"],
@@ -190,12 +194,17 @@ function setOptionProperty(option: Option, name: string, value: unknown): void {
 const driver: NativeDriver = {
   create(kind, tag, emit): number {
     switch (kind) {
-      case "VStack": return NativeVStack(8, []);
+      case "VStack": {
+        const column = NativeVStack(8, []);
+        columns.add(column);
+        return column;
+      }
       case "HStack": return NativeHStack(8, []);
       case "ZStack": return NativeZStack();
       case "Spacer": return NativeSpacer();
       case "Text": {
         const text = Text("");
+        texts.add(text);
         if (HEADINGS[tag]) textSetFontWeight(text, HEADINGS[tag], SEMIBOLD);
         else if (tag === "small") textSetFontSize(text, SMALL);
         return text;
@@ -281,6 +290,7 @@ const driver: NativeDriver = {
       widgetRemoveChild(previousParent as Widget, child as Widget);
     }
     widgetAddChildAt(parent as Widget, child as Widget, index);
+    if (columns.has(parent) && texts.has(child)) widgetSetMaxWidth(child as Widget, 1e6);
   },
   move(parent, from, to) {
     const picker = controls.get(parent);
