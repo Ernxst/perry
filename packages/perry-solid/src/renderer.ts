@@ -60,6 +60,8 @@ const kinds: Record<string, ElementName> = {
   strong: "Text", b: "Text", em: "Text", i: "Text", u: "Text", ins: "Text", s: "Text", del: "Text",
   code: "Text", kbd: "Text", samp: "Text", var: "Text", pre: "Text", mark: "Text", sub: "Text", sup: "Text",
   abbr: "Text", cite: "Text", dfn: "Text", time: "Text", address: "Text", figcaption: "Text",
+  div: "VStack", main: "VStack", header: "VStack", footer: "VStack", nav: "VStack", section: "VStack",
+  article: "VStack", aside: "VStack", figure: "VStack", search: "VStack", menu: "VStack",
   button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress",
   input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label",
 };

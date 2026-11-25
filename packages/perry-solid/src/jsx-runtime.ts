@@ -25,6 +25,10 @@ export namespace JSX {
   interface TextProps extends Common {
     children?: Element;
   }
+  /** Natively a VStack; on the web a flex column with the stacks' gap. */
+  interface BlockProps extends Common {
+    children?: Element;
+  }
   interface ControlProps extends Common {
     disabled?: boolean;
     onInput?: Handler;
@@ -65,6 +69,17 @@ export namespace JSX {
     time: TextProps;
     address: TextProps;
     figcaption: TextProps;
+    div: BlockProps;
+    main: BlockProps;
+    header: BlockProps;
+    footer: BlockProps;
+    nav: BlockProps;
+    section: BlockProps;
+    article: BlockProps;
+    aside: BlockProps;
+    figure: BlockProps;
+    search: BlockProps;
+    menu: BlockProps;
     /** Natively underlined text that opens `href` with the system when clicked. */
     a: TextProps & { href?: string };
     button: Common & { children?: Element; disabled?: boolean; onClick?: () => void };

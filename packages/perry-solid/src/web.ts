@@ -31,6 +31,10 @@ h4 { font-size: 14px; } h5 { font-size: 13px; } h6 { font-size: 11px; }
 small, sub, sup { font-size: 11px; }
 code, kbd, samp, pre { font-family: ui-monospace, monospace; }
 mark { align-self: flex-start; background: #ff0; color: #000; }
+:where(.perry-vstack, .perry-hstack, .perry-zstack, .perry-scrollview)
+  :is(main, header, footer, nav, section, article, aside, figure, search, menu, div:not([class*="perry-"])) {
+  display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; box-sizing: border-box;
+}
 button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: #fff; color: #000; }
 a { color: rgb(0, 104, 218); align-self: flex-start; }
 img { align-self: flex-start; object-fit: fill; }
