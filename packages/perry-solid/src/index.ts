@@ -263,6 +263,8 @@ function build(control: Control): void {
   control.scheduled = false;
   const previous = control.inner;
   control.inner = createControl(control);
+  // The new control starts empty, so applyControl must set the value again.
+  control.shown = "";
   if (previous !== 0) widgetRemoveChild(control.wrapper, previous);
   widgetAddChild(control.wrapper, control.inner);
   applyControl(control);
