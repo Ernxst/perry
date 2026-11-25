@@ -76,7 +76,7 @@ const kinds: Record<string, ElementName> = {
   code: "Text", kbd: "Text", samp: "Text", var: "Text", pre: "Text", mark: "Text", sub: "Text", sup: "Text",
   abbr: "Text", cite: "Text", dfn: "Text", time: "Text", address: "Text", figcaption: "Text",
   div: "VStack", main: "VStack", header: "VStack", footer: "VStack", nav: "VStack", section: "VStack",
-  article: "VStack", aside: "VStack", figure: "VStack", search: "VStack", menu: "VStack",
+  article: "VStack", aside: "VStack", figure: "VStack", search: "VStack", menu: "VStack", form: "VStack",
   ul: "VStack", ol: "VStack", li: "ListItem", details: "Details", summary: "Text",
   button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress", meter: "Progress", output: "Text",
   input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label",
@@ -95,7 +95,17 @@ export function createNativeRenderer(driver: NativeDriver) {
     return (handler: string, state: ControlState) => {
       const callback = node.props[handler];
       if (typeof callback === "function") callback({ currentTarget: state, target: state });
+      if (handler === "onClick" && node.kind === "Button" && node.props.type !== "button") submit(node);
     };
+  }
+
+  // A button is a submit button unless its type is "button", as on the web. There's no
+  // navigation to prevent, so preventDefault does nothing.
+  function submit(button: NativeNode): void {
+    let form = button.parent;
+    while (form && form.tag !== "form") form = form.parent;
+    const callback = form?.props.onSubmit;
+    if (typeof callback === "function") callback({ preventDefault() {} });
   }
 
   function createElement(tag: string): NativeNode {

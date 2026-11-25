@@ -32,7 +32,7 @@ small, sub, sup { font-size: 11px; }
 code, kbd, samp, pre { font-family: ui-monospace, monospace; }
 mark { align-self: flex-start; background: #ff0; color: #000; }
 :where(.perry-vstack, .perry-hstack, .perry-zstack, .perry-scrollview)
-  :is(main, header, footer, nav, section, article, aside, figure, search, menu, div:not([class*="perry-"])) {
+  :is(main, header, footer, nav, section, article, aside, figure, search, menu, form, div:not([class*="perry-"])) {
   display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; box-sizing: border-box;
 }
 details { align-self: stretch; }

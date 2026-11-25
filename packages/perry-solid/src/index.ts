@@ -578,6 +578,11 @@ const driver: NativeDriver = {
         if (!links.has(handle)) throw new Error(`href is unsupported on ${kind}`);
         links.set(handle, value == null ? "" : String(value));
         return;
+      case "type":
+        if (kind !== "Button" || (value != null && value !== "submit" && value !== "button")) {
+          throw new Error(`type="${value}" is unsupported on ${kind}`);
+        }
+        return;
       case "target":
         // The system opens every link in the default browser.
         if (!links.has(handle)) throw new Error(`target is unsupported on ${kind}`);

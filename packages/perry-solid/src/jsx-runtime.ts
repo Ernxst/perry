@@ -83,6 +83,11 @@ export namespace JSX {
     figure: BlockProps;
     search: BlockProps;
     menu: BlockProps;
+    /**
+     * `onSubmit` fires when a button inside it is clicked, unless the button's `type` is "button".
+     * Call `event.preventDefault()`, or the web page reloads. Natively Return in a text field doesn't submit.
+     */
+    form: BlockProps & { onSubmit?: (event: { preventDefault(): void }) => void };
     /** Holds only `li`. */
     ul: BlockProps;
     /** Holds only `li`, numbered from 1. */
@@ -100,7 +105,7 @@ export namespace JSX {
     summary: TextProps;
     /** Natively underlined text that opens `href` with the system when clicked; `target` has no effect there. */
     a: TextProps & { href?: string; target?: string };
-    button: Common & { children?: Element; disabled?: boolean; onClick?: () => void };
+    button: Common & { children?: Element; disabled?: boolean; type?: "submit" | "button"; onClick?: () => void };
     hr: Common;
     /**
      * `src` is a URL, a `data:` URL, or a path into Vite's `public/` folder, which the native build
