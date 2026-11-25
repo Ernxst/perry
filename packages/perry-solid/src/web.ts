@@ -38,10 +38,10 @@ mark { align-self: flex-start; background: #ff0; color: #000; }
 button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: #fff; color: #000; }
 a { color: rgb(0, 104, 218); align-self: flex-start; }
 img { align-self: flex-start; object-fit: fill; }
-progress { appearance: none; align-self: flex-start; width: 150px; height: 6px; border: 0; border-radius: 3px; background: rgba(0, 0, 0, 0.12); overflow: hidden; }
-progress::-webkit-progress-bar { background: transparent; }
-progress::-webkit-progress-value { background: rgb(0, 104, 218); }
-progress::-moz-progress-bar { background: rgb(0, 104, 218); }
+progress, meter { appearance: none; align-self: flex-start; width: 150px; height: 6px; border: 0; border-radius: 3px; background: rgba(0, 0, 0, 0.12); overflow: hidden; }
+progress::-webkit-progress-bar, meter::-webkit-meter-bar { background: transparent; border: 0; height: 6px; }
+progress::-webkit-progress-value, meter::-webkit-meter-optimum-value { background: rgb(0, 104, 218); }
+progress::-moz-progress-bar, meter::-moz-meter-bar { background: rgb(0, 104, 218); }
 hr { align-self: stretch; margin: 0; border: 0; border-top: 1px solid #0002; }
 label { display: flex; align-items: center; gap: 8px; align-self: flex-start; }
 input, textarea, select { font: inherit; align-self: flex-start; }

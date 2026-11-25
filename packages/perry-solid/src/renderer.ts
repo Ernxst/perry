@@ -77,7 +77,7 @@ const kinds: Record<string, ElementName> = {
   abbr: "Text", cite: "Text", dfn: "Text", time: "Text", address: "Text", figcaption: "Text",
   div: "VStack", main: "VStack", header: "VStack", footer: "VStack", nav: "VStack", section: "VStack",
   article: "VStack", aside: "VStack", figure: "VStack", search: "VStack", menu: "VStack",
-  button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress",
+  button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress", meter: "Progress",
   input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label",
 };
 

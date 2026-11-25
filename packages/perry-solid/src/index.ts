@@ -107,13 +107,15 @@ interface Picture {
 }
 const images = new Map<number, Picture>();
 
-// A <progress> with a value is a track and fill drawn from stacks, to look like the web's bar.
-// Without one it's a spinner, Perry's only indeterminate progress view.
+// A <progress> or <meter> with a value is a track and fill drawn from stacks, to look like the
+// web's bar. A <progress> without one is a spinner, Perry's only indeterminate progress view.
 interface Bar {
+  meter: boolean;
   track: Widget;
   fill: Widget;
   spinner: Widget;
   value: number | undefined;
+  min: number;
   max: number;
 }
 const bars = new Map<number, Bar>();
@@ -280,21 +282,23 @@ function setImageProperty(image: Picture, name: string, value: unknown): boolean
 }
 
 function showBar(bar: Bar): void {
-  const indeterminate = bar.value == null;
+  const indeterminate = bar.value == null && !bar.meter;
   widgetSetHidden(bar.track, indeterminate ? 1 : 0);
   widgetSetHidden(bar.spinner, indeterminate ? 0 : 1);
-  if (bar.value != null) widgetSetWidth(bar.fill, PROGRESS_WIDTH * Math.min(Math.max(bar.value / bar.max, 0), 1));
+  const fraction = ((bar.value ?? bar.min) - bar.min) / (bar.max - bar.min);
+  widgetSetWidth(bar.fill, PROGRESS_WIDTH * Math.min(Math.max(fraction, 0), 1));
 }
 
 function setBarProperty(bar: Bar, name: string, value: unknown): boolean {
   if (name === "value") bar.value = value == null ? undefined : numeric(value, 0);
   else if (name === "max") bar.max = numeric(value, 1);
+  else if (name === "min" && bar.meter) bar.min = numeric(value, 0);
   else return false;
   showBar(bar);
   return true;
 }
 
-function createBar(): Widget {
+function createBar(meter: boolean): Widget {
   const wrapper = NativeHStack(0, []);
   const track = NativeHStack(0, []);
   const fill = NativeHStack(0, []);
@@ -312,7 +316,7 @@ function createBar(): Widget {
   widgetSetHeight(spinner, SPINNER_SIZE);
   widgetAddChild(wrapper, track);
   widgetAddChild(wrapper, spinner);
-  const bar: Bar = { track, fill, spinner, value: undefined, max: 1 };
+  const bar: Bar = { meter, track, fill, spinner, value: undefined, min: 0, max: 1 };
   bars.set(wrapper, bar);
   showBar(bar);
   return wrapper;
@@ -409,7 +413,7 @@ const driver: NativeDriver = {
         images.set(wrapper, { wrapper, inner: 0, src: "", alt: "", width: undefined, height: undefined });
         return wrapper;
       }
-      case "Progress": return createBar();
+      case "Progress": return createBar(tag === "meter");
       case "Button": return Button("", () => emit("onClick", { value: "", checked: false }));
       case "Divider": return Divider();
       case "Canvas": return BloomView(0, 0);

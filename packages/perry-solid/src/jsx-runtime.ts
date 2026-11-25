@@ -93,6 +93,8 @@ export namespace JSX {
     img: Common & { src: string; alt?: string; width?: number; height?: number };
     /** Natively a bar drawn from stacks; without a `value` it's a spinner. */
     progress: Common & { value?: number; max?: number };
+    /** Drawn as `progress` is; `low`, `high` and `optimum` aren't supported. */
+    meter: Common & { value?: number; min?: number; max?: number };
     canvas: Common & {
       ref?: HTMLCanvasElement | ((element: HTMLCanvasElement) => void);
       width?: number;
