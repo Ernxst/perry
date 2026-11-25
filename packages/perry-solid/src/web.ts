@@ -24,9 +24,13 @@ body { margin: 0; font: 13px system-ui, sans-serif; }
 .perry-zstack > canvas { width: 100%; height: 100%; }
 .perry-spacer { flex: 1; }
 .perry-scrollview { display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; overflow-y: auto; }
-h1, h2, h3, p, small { margin: 0; }
-h1, h2, h3 { font-weight: 600; }
-h1 { font-size: 26px; } h2 { font-size: 20px; } h3 { font-size: 16px; } small { font-size: 11px; }
+h1, h2, h3, h4, h5, h6, p, pre { margin: 0; }
+h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+h1 { font-size: 26px; } h2 { font-size: 20px; } h3 { font-size: 16px; }
+h4 { font-size: 14px; } h5 { font-size: 13px; } h6 { font-size: 11px; }
+small, sub, sup { font-size: 11px; }
+code, kbd, samp, pre { font-family: ui-monospace, monospace; }
+mark { align-self: flex-start; background: #ff0; color: #000; }
 button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: #fff; color: #000; }
 a { color: rgb(0, 104, 218); align-self: flex-start; }
 img { align-self: flex-start; object-fit: fill; }

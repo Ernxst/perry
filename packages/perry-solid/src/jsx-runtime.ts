@@ -21,6 +21,7 @@ export namespace JSX {
     hidden?: boolean;
     title?: string;
   }
+  /** Natively a single Text widget, so its children must be text, not other elements. */
   interface TextProps extends Common {
     children?: Element;
   }
@@ -36,7 +37,34 @@ export namespace JSX {
     h1: TextProps;
     h2: TextProps;
     h3: TextProps;
+    h4: TextProps;
+    h5: TextProps;
+    h6: TextProps;
     small: TextProps;
+    sub: TextProps;
+    sup: TextProps;
+    strong: TextProps;
+    b: TextProps;
+    /** Natively upright: a Perry Text can't be italic. */
+    em: TextProps;
+    /** Natively upright: a Perry Text can't be italic. */
+    i: TextProps;
+    u: TextProps;
+    ins: TextProps;
+    s: TextProps;
+    del: TextProps;
+    code: TextProps;
+    kbd: TextProps;
+    samp: TextProps;
+    pre: TextProps;
+    mark: TextProps;
+    abbr: TextProps;
+    cite: TextProps;
+    dfn: TextProps;
+    var: TextProps;
+    time: TextProps;
+    address: TextProps;
+    figcaption: TextProps;
     /** Natively underlined text that opens `href` with the system when clicked. */
     a: TextProps & { href?: string };
     button: Common & { children?: Element; disabled?: boolean; onClick?: () => void };

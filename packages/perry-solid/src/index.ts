@@ -3,7 +3,7 @@ import {
   ScrollView as NativeScrollView, scrollviewSetChild,
   Text, Button, Divider, BloomView, TextField, SecureField, TextArea, Toggle, Slider, Picker, DatePicker,
   Image, ImageFile, ProgressView,
-  textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetColor, textSetDecoration,
+  textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetFontFamily, textSetColor, textSetDecoration,
   textfieldSetString, textareaSetString, toggleSetState, pickerAddItem, pickerSetSelected, datePickerSetDate,
   textfieldSetOnSubmit,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
@@ -25,9 +25,16 @@ export { For } from "./renderer.ts";
 declare const __platform__: number;
 
 // Matches the web build's stylesheet in web.ts.
-const HEADINGS: Record<string, number> = { h1: 26, h2: 20, h3: 16 };
+const HEADINGS: Record<string, number> = { h1: 26, h2: 20, h3: 16, h4: 14, h5: 13, h6: 11 };
+const BODY = 13;
 const SMALL = 11;
+const SMALLER = new Set(["small", "sub", "sup"]);
 const SEMIBOLD = 0.3;
+const BOLD = 0.4;
+const MONOSPACED = new Set(["code", "kbd", "samp", "pre"]);
+// textSetDecoration's values: 1 underlines, 2 strikes through.
+const DECORATIONS: Record<string, number> = { a: 1, u: 1, ins: 1, s: 2, del: 2 };
+const MARK = { r: 1, g: 1, b: 0 };
 // AppKit text fields and sliders collapse in a stack unless given a width.
 const WIDTHS: Record<string, number> = { text: 200, password: 200, range: 150, textarea: 200, date: 130 };
 const TEXTAREA_HEIGHT = 60;
@@ -79,6 +86,7 @@ const columns = new Set<number>();
 const slotted = new Set<number>();
 // An <a> is text that opens its href when clicked.
 const links = new Map<number, string>();
+const decorations = new Map<number, number>();
 // A ScrollView's children go into a column inside it, since Perry's scroll view holds one child.
 const scrolls = new Map<number, Widget>();
 
@@ -333,10 +341,15 @@ const driver: NativeDriver = {
       }
       case "Text": {
         const text = Text("");
-        slotted.add(text);
+        // In the slot, text is as wide as its column, which would stretch a mark's background.
+        if (tag !== "mark") slotted.add(text);
         if (HEADINGS[tag]) textSetFontWeight(text, HEADINGS[tag], SEMIBOLD);
-        else if (tag === "small") textSetFontSize(text, SMALL);
-        else if (tag === "a") {
+        else if (tag === "strong" || tag === "b") textSetFontWeight(text, BODY, BOLD);
+        else if (SMALLER.has(tag)) textSetFontSize(text, SMALL);
+        else if (MONOSPACED.has(tag)) textSetFontFamily(text, "monospaced");
+        else if (tag === "mark") widgetSetBackgroundColor(text, MARK.r, MARK.g, MARK.b, 1);
+        if (DECORATIONS[tag]) decorations.set(text, DECORATIONS[tag]);
+        if (tag === "a") {
           links.set(text, "");
           textSetColor(text, ACCENT.r, ACCENT.g, ACCENT.b, 1);
           widgetSetOnClick(text, () => {
@@ -389,8 +402,9 @@ const driver: NativeDriver = {
       case "text":
         if (kind === "Text") {
           textSetString(widget, value == null ? "" : String(value));
-          // Setting the string drops the underline.
-          if (links.has(handle)) textSetDecoration(widget, 1);
+          // Setting the string drops the decoration.
+          const decoration = decorations.get(handle);
+          if (decoration) textSetDecoration(widget, decoration);
         }
         else if (kind === "Button") buttonSetTitle(widget, value == null ? "" : String(value));
         else throw new Error(`text is unsupported on ${kind}`);
