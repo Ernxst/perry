@@ -37,15 +37,24 @@ export namespace JSX {
     h2: TextProps;
     h3: TextProps;
     small: TextProps;
+    /** Natively underlined text that opens `href` with the system when clicked. */
+    a: TextProps & { href?: string };
     button: Common & { children?: Element; disabled?: boolean; onClick?: () => void };
     hr: Common;
+    /**
+     * `src` is a URL, a `data:` URL, or a path into Vite's `public/` folder, which the native build
+     * copies into the app bundle. Give both `width` and `height`: natively an image stretches to fill them.
+     */
+    img: Common & { src: string; alt?: string; width?: number; height?: number };
+    /** Natively a bar drawn from stacks; without a `value` it's a spinner. */
+    progress: Common & { value?: number; max?: number };
     canvas: Common & {
       ref?: HTMLCanvasElement | ((element: HTMLCanvasElement) => void);
       width?: number;
       height?: number;
     };
     input: ControlProps & {
-      type?: "text" | "checkbox" | "range";
+      type?: "text" | "password" | "checkbox" | "range" | "date";
       value?: string | number;
       checked?: boolean;
       placeholder?: string;

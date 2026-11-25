@@ -4,7 +4,7 @@ import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Acce
 
 export type ElementName =
   | "VStack" | "HStack" | "ZStack" | "Spacer"
-  | "Text" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
+  | "Image" | "Progress" | "Text" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
 
 /** What a native control reports to the `onInput` and `onChange` handlers, as `event.currentTarget`. */
 export interface ControlState {
@@ -56,8 +56,8 @@ function isLabel(node: NativeNode): boolean {
 // JSX names, the shared code's web elements plus the stack components' own tags, to native kinds.
 const kinds: Record<string, ElementName> = {
   vstack: "VStack", hstack: "HStack", zstack: "ZStack", spacer: "Spacer",
-  span: "Text", p: "Text", h1: "Text", h2: "Text", h3: "Text", small: "Text",
-  button: "Button", hr: "Divider", canvas: "Canvas",
+  span: "Text", p: "Text", h1: "Text", h2: "Text", h3: "Text", small: "Text", a: "Text",
+  button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress",
   input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label",
 };
 

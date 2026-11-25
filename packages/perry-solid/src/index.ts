@@ -1,14 +1,17 @@
 import {
   VStack as NativeVStack, HStack as NativeHStack, ZStack as NativeZStack, Spacer as NativeSpacer,
-  Text, Button, Divider, BloomView, TextField, TextArea, Toggle, Slider, Picker,
-  textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textfieldSetString, textareaSetString,
-  toggleSetState, pickerAddItem, pickerSetSelected, textfieldSetOnSubmit,
+  Text, Button, Divider, BloomView, TextField, SecureField, TextArea, Toggle, Slider, Picker, DatePicker,
+  Image, ImageFile, ProgressView,
+  textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetColor, textSetDecoration,
+  textfieldSetString, textareaSetString, toggleSetState, pickerAddItem, pickerSetSelected, datePickerSetDate,
+  textfieldSetOnSubmit,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth,
   type Widget,
 } from "perry/ui";
+import { openURL } from "perry/system";
 import { CanvasElement } from "perry-browser";
 import { createNativeRenderer, type ControlState, type NativeDriver, type Props } from "./renderer.ts";
 import type { JSX } from "./jsx-runtime.ts";
@@ -25,8 +28,14 @@ const HEADINGS: Record<string, number> = { h1: 26, h2: 20, h3: 16 };
 const SMALL = 11;
 const SEMIBOLD = 0.3;
 // AppKit text fields and sliders collapse in a stack unless given a width.
-const WIDTHS: Record<string, number> = { text: 200, range: 150, textarea: 200 };
+const WIDTHS: Record<string, number> = { text: 200, password: 200, range: 150, textarea: 200, date: 130 };
 const TEXTAREA_HEIGHT = 60;
+const PROGRESS_WIDTH = 150;
+const PROGRESS_HEIGHT = 6;
+const SPINNER_SIZE = 16;
+// The web build's link and progress colour, rgb(0, 104, 218), and its progress track.
+const ACCENT = { r: 0, g: 0.41, b: 0.85 };
+const TRACK_ALPHA = 0.12;
 
 function numeric(value: unknown, fallback: number): number {
   if (value == null) return fallback;
@@ -67,6 +76,30 @@ const labels = new Map<number, { control: number }>();
 // slot holds a child inside both paddings, so text and rows in a column go into one.
 const columns = new Set<number>();
 const slotted = new Set<number>();
+// An <a> is text that opens its href when clicked.
+const links = new Map<number, string>();
+
+// An <img> is a stack holding the image, which is made again when src changes.
+interface Picture {
+  wrapper: Widget;
+  inner: Widget | 0;
+  src: string;
+  alt: string;
+  width: number | undefined;
+  height: number | undefined;
+}
+const images = new Map<number, Picture>();
+
+// A <progress> with a value is a track and fill drawn from stacks, to look like the web's bar.
+// Without one it's a spinner, Perry's only indeterminate progress view.
+interface Bar {
+  track: Widget;
+  fill: Widget;
+  spinner: Widget;
+  value: number | undefined;
+  max: number;
+}
+const bars = new Map<number, Bar>();
 
 const REBUILDS: Record<Control["kind"], string[]> = {
   Input: ["type", "placeholder", "min", "max"],
@@ -122,12 +155,20 @@ function createControl(control: Control): Widget {
       return Slider(numeric(props.min, 0), numeric(props.max, 100), value => {
         report(control, { value: String(value), checked: false });
       });
-    case "text": {
+    case "date":
+      return DatePicker(0, 0, value => {
+        control.shown = value;
+        report(control, { value, checked: false });
+      });
+    case "text":
+    case "password": {
       // As on the web, onChange fires when editing ends: on Return or when the field loses focus.
-      const field = TextField(String(props.placeholder ?? ""), value => {
+      const onInput = (value: string) => {
         control.shown = value;
         control.emit("onInput", { value, checked: false });
-      });
+      };
+      const placeholder = String(props.placeholder ?? "");
+      const field = props.type === "password" ? SecureField(placeholder, onInput) : TextField(placeholder, onInput);
       textfieldSetOnSubmit(field, () => control.emit("onChange", { value: control.shown, checked: false }));
       return field;
     }
@@ -145,6 +186,12 @@ function applyControl(control: Control): void {
   } else if (type === "picker") {
     const index = control.options.findIndex(handle => optionValue(options.get(handle)!) === String(props.value));
     if (index >= 0) pickerSetSelected(inner, index);
+  } else if (type === "date") {
+    const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(props.value ?? ""));
+    if (date && date[0] !== control.shown) {
+      control.shown = date[0];
+      datePickerSetDate(inner, Number(date[1]), Number(date[2]), Number(date[3]));
+    }
   } else if (type !== "range" && props.value != null && String(props.value) !== control.shown) {
     // Perry's slider has no value setter, so a range input starts at min and only reports.
     control.shown = String(props.value);
@@ -184,6 +231,71 @@ function setControlProperty(control: Control, name: string, value: unknown): voi
   else if (control.inner !== 0 && !control.scheduled) applyControl(control);
 }
 
+function loadImage(image: Picture): void {
+  if (image.inner !== 0) widgetRemoveChild(image.wrapper, image.inner);
+  image.inner = 0;
+  if (!image.src) return;
+  // Other sources are files in the app bundle's Resources, where Vite's public/ folder is copied.
+  image.inner = /^(https?|data):/.test(image.src) ? Image(image.src, image.alt) : ImageFile(image.src.replace(/^\//, ""));
+  widgetAddChild(image.wrapper, image.inner);
+  sizeImage(image);
+}
+
+function sizeImage(image: Picture): void {
+  if (image.inner === 0) return;
+  if (image.width != null) widgetSetWidth(image.inner, image.width);
+  if (image.height != null) widgetSetHeight(image.inner, image.height);
+}
+
+function setImageProperty(image: Picture, name: string, value: unknown): boolean {
+  switch (name) {
+    case "src": image.src = value == null ? "" : String(value); loadImage(image); return true;
+    case "alt": image.alt = value == null ? "" : String(value); return true;
+    case "width": image.width = value == null ? undefined : numeric(value, 0); sizeImage(image); return true;
+    case "height": image.height = value == null ? undefined : numeric(value, 0); sizeImage(image); return true;
+    default: return false;
+  }
+}
+
+function showBar(bar: Bar): void {
+  const indeterminate = bar.value == null;
+  widgetSetHidden(bar.track, indeterminate ? 1 : 0);
+  widgetSetHidden(bar.spinner, indeterminate ? 0 : 1);
+  if (bar.value != null) widgetSetWidth(bar.fill, PROGRESS_WIDTH * Math.min(Math.max(bar.value / bar.max, 0), 1));
+}
+
+function setBarProperty(bar: Bar, name: string, value: unknown): boolean {
+  if (name === "value") bar.value = value == null ? undefined : numeric(value, 0);
+  else if (name === "max") bar.max = numeric(value, 1);
+  else return false;
+  showBar(bar);
+  return true;
+}
+
+function createBar(): Widget {
+  const wrapper = NativeHStack(0, []);
+  const track = NativeHStack(0, []);
+  const fill = NativeHStack(0, []);
+  widgetSetWidth(track, PROGRESS_WIDTH);
+  widgetSetHeight(track, PROGRESS_HEIGHT);
+  widgetSetBackgroundColor(track, 0, 0, 0, TRACK_ALPHA);
+  setCornerRadius(track, PROGRESS_HEIGHT / 2);
+  widgetSetHeight(fill, PROGRESS_HEIGHT);
+  widgetSetBackgroundColor(fill, ACCENT.r, ACCENT.g, ACCENT.b, 1);
+  setCornerRadius(fill, PROGRESS_HEIGHT / 2);
+  widgetAddChild(track, fill);
+  widgetAddChild(track, NativeSpacer());
+  const spinner = ProgressView();
+  widgetSetWidth(spinner, SPINNER_SIZE);
+  widgetSetHeight(spinner, SPINNER_SIZE);
+  widgetAddChild(wrapper, track);
+  widgetAddChild(wrapper, spinner);
+  const bar: Bar = { track, fill, spinner, value: undefined, max: 1 };
+  bars.set(wrapper, bar);
+  showBar(bar);
+  return wrapper;
+}
+
 function setOptionProperty(option: Option, name: string, value: unknown): void {
   if (name === "text") option.label = value == null ? "" : String(value);
   else if (name === "value") option.value = value == null ? undefined : String(value);
@@ -213,8 +325,22 @@ const driver: NativeDriver = {
         slotted.add(text);
         if (HEADINGS[tag]) textSetFontWeight(text, HEADINGS[tag], SEMIBOLD);
         else if (tag === "small") textSetFontSize(text, SMALL);
+        else if (tag === "a") {
+          links.set(text, "");
+          textSetColor(text, ACCENT.r, ACCENT.g, ACCENT.b, 1);
+          widgetSetOnClick(text, () => {
+            const href = links.get(text);
+            if (href) openURL(href);
+          });
+        }
         return text;
       }
+      case "Image": {
+        const wrapper = NativeHStack(0, []);
+        images.set(wrapper, { wrapper, inner: 0, src: "", alt: "", width: undefined, height: undefined });
+        return wrapper;
+      }
+      case "Progress": return createBar();
       case "Button": return Button("", () => emit("onClick", { value: "", checked: false }));
       case "Divider": return Divider();
       case "Canvas": return BloomView(0, 0);
@@ -243,10 +369,18 @@ const driver: NativeDriver = {
     if (control) return setControlProperty(control, name, value);
     const option = options.get(handle);
     if (option) return setOptionProperty(option, name, value);
+    const image = images.get(handle);
+    if (image && setImageProperty(image, name, value)) return;
+    const bar = bars.get(handle);
+    if (bar && setBarProperty(bar, name, value)) return;
     const widget = handle as Widget;
     switch (name) {
       case "text":
-        if (kind === "Text") textSetString(widget, value == null ? "" : String(value));
+        if (kind === "Text") {
+          textSetString(widget, value == null ? "" : String(value));
+          // Setting the string drops the underline.
+          if (links.has(handle)) textSetDecoration(widget, 1);
+        }
         else if (kind === "Button") buttonSetTitle(widget, value == null ? "" : String(value));
         else throw new Error(`text is unsupported on ${kind}`);
         return;
@@ -264,6 +398,10 @@ const driver: NativeDriver = {
       case "title": widgetSetTooltip(widget, value == null ? "" : String(value)); return;
       case "cornerRadius": setCornerRadius(widget, numeric(value, 0)); return;
       case "padding": setPadding(widget, numeric(value, 0)); return;
+      case "href":
+        if (!links.has(handle)) throw new Error(`href is unsupported on ${kind}`);
+        links.set(handle, value == null ? "" : String(value));
+        return;
       case "backgroundColor": {
         const color = value == null ? [0, 0, 0, 0] : value;
         if (!Array.isArray(color) || color.length !== 4) throw new Error("backgroundColor expects [r, g, b, a]");
