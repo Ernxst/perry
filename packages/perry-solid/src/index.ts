@@ -11,6 +11,7 @@ import {
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor,
+  widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
   type Widget,
 } from "perry/ui";
 import { openURL } from "perry/system";
@@ -35,7 +36,6 @@ const BOLD = 0.4;
 const MONOSPACED = new Set(["code", "kbd", "samp", "pre"]);
 // textSetDecoration's values: 1 underlines, 2 strikes through.
 const DECORATIONS: Record<string, number> = { a: 1, u: 1, ins: 1, s: 2, del: 2 };
-const MARK = { r: 1, g: 1, b: 0 };
 // A plain Perry Text can't be italic, so these show through AttributedText even alone.
 const ITALIC = new Set(["em", "i", "var", "cite", "dfn", "address"]);
 // AppKit text fields and sliders collapse in a stack unless given a width.
@@ -52,7 +52,7 @@ const FRAME = { width: 300, height: 150 };
 const DIALOG = { padding: 16, radius: 10 };
 // A modal dialog's widest box and its distance from the window's edges, and the dimming a
 // browser's ::backdrop gives the page behind it.
-const MODAL = { width: 480, margin: 20, backdrop: 0.1 };
+const MODAL = { width: 480, margin: 20 };
 const EQUAL_CENTERING = 4;
 // A browser's default spacing between table cells and padding inside them, and the width a
 // column takes when the first row gives none.
@@ -61,13 +61,47 @@ const TABLE = { spacing: 2, padding: 1, width: 100 };
 const MARKER_WIDTH = 14;
 const LIST_GAP = 4;
 // A <fieldset>'s box, matching the web stylesheet's.
-const FIELDSET = { padding: 12, radius: 6, alpha: 0.2 };
+const FIELDSET = { padding: 12, radius: 6 };
 // stackSetAlignment takes NSLayoutAttribute values.
 const TOP = 3;
 const CENTER_X = 9;
-// The web build's link and progress colour, rgb(0, 104, 218), and its progress track.
-const ACCENT = { r: 0, g: 0.41, b: 0.85 };
-const TRACK_ALPHA = 0.12;
+
+type Rgba = [number, number, number, number];
+/** The web stylesheet's colours, for light then dark appearance. */
+const COLOURS = {
+  accent: [[0, 0.41, 0.85, 1], [0.04, 0.52, 1, 1]],
+  track: [[0, 0, 0, 0.12], [1, 1, 1, 0.15]],
+  border: [[0, 0, 0, 0.2], [1, 1, 1, 0.2]],
+  box: [[1, 1, 1, 1], [0.2, 0.2, 0.2, 1]],
+  backdrop: [[0, 0, 0, 0.1], [0, 0, 0, 0.4]],
+  mark: [[1, 1, 0, 1], [1, 1, 0, 1]],
+} satisfies Record<string, [Rgba, Rgba]>;
+type Colour = keyof typeof COLOURS;
+
+// Perry's dynamic colours, which follow the window's appearance, exist only on macOS.
+function setBackground(widget: Widget, colour: Colour): void {
+  const [l, d] = COLOURS[colour];
+  if (__platform__ === 0) widgetSetDynamicBackgroundColor(widget, l[0], l[1], l[2], l[3], d[0], d[1], d[2], d[3]);
+  else widgetSetBackgroundColor(widget, l[0], l[1], l[2], l[3]);
+}
+
+function setBorder(widget: Widget, colour: Colour): void {
+  const [l, d] = COLOURS[colour];
+  if (__platform__ === 0) widgetSetDynamicBorderColor(widget, l[0], l[1], l[2], l[3], d[0], d[1], d[2], d[3]);
+  else widgetSetBorderColor(widget, l[0], l[1], l[2], l[3]);
+}
+
+function setTextColour(widget: Widget, colour: Colour): void {
+  const [l, d] = COLOURS[colour];
+  if (__platform__ === 0) textSetDynamicColor(widget, l[0], l[1], l[2], l[3], d[0], d[1], d[2], d[3]);
+  else textSetColor(widget, l[0], l[1], l[2], l[3]);
+}
+
+// A mark stays yellow in dark appearance, so its text stays black, as the web stylesheet's does.
+function markText(text: Widget): void {
+  setBackground(text, "mark");
+  textSetColor(text, 0, 0, 0, 1);
+}
 
 function numeric(value: unknown, fallback: number): number {
   if (value == null) return fallback;
@@ -475,10 +509,10 @@ function createBar(meter: boolean): Widget {
   const fill = NativeHStack(0, []);
   widgetSetWidth(track, PROGRESS_WIDTH);
   widgetSetHeight(track, PROGRESS_HEIGHT);
-  widgetSetBackgroundColor(track, 0, 0, 0, TRACK_ALPHA);
+  setBackground(track, "track");
   setCornerRadius(track, PROGRESS_HEIGHT / 2);
   widgetSetHeight(fill, PROGRESS_HEIGHT);
-  widgetSetBackgroundColor(fill, ACCENT.r, ACCENT.g, ACCENT.b, 1);
+  setBackground(fill, "accent");
   setCornerRadius(fill, PROGRESS_HEIGHT / 2);
   widgetAddChild(track, fill);
   widgetAddChild(track, NativeSpacer());
@@ -551,9 +585,9 @@ function createDialog(emit: Dialog["emit"]): Widget {
   const box = makeColumn(8);
   setPadding(box, DIALOG.padding);
   setCornerRadius(box, DIALOG.radius);
-  widgetSetBackgroundColor(box, 1, 1, 1, 1);
+  setBackground(box, "box");
   widgetSetBorderWidth(box, 1);
-  widgetSetBorderColor(box, 0, 0, 0, FIELDSET.alpha);
+  setBorder(box, "border");
   const placeholder = NativeVStack(0, [box]);
   widgetSetMaxWidth(box, 1e6);
   widgetSetHidden(placeholder, 1);
@@ -573,7 +607,7 @@ function getModalLayer(): Widget {
   if (modalLayer) return modalLayer;
   if (!renderRoot) throw new Error("showModal() needs the app rendered with render()");
   modalBackdrop = Text("");
-  widgetSetBackgroundColor(modalBackdrop, 0, 0, 0, MODAL.backdrop);
+  setBackground(modalBackdrop, "backdrop");
   modalLayer = NativeVStack(0, [NativeVStack(0, []), NativeVStack(0, [])]);
   stackSetDistribution(modalLayer, EQUAL_CENTERING);
   setPadding(modalLayer, MODAL.margin);
@@ -656,7 +690,7 @@ function setOptionProperty(option: Option, name: string, value: unknown): void {
 
 function makeLink(text: Widget): void {
   links.set(text, "");
-  textSetColor(text, ACCENT.r, ACCENT.g, ACCENT.b, 1);
+  setTextColour(text, "accent");
   addClick(text, () => {
     const href = links.get(text);
     if (href) openURL(href);
@@ -666,7 +700,7 @@ function makeLink(text: Widget): void {
 function createRichText(tag: string): Widget {
   const text = AttributedText();
   richTexts.set(text, tag);
-  if (tag === "mark") widgetSetBackgroundColor(text, MARK.r, MARK.g, MARK.b, 1);
+  if (tag === "mark") markText(text);
   else slotted.add(text);
   if (tag === "a") makeLink(text);
   if (tag === "summary") summaries.add(text);
@@ -686,7 +720,9 @@ function appendRun(text: Widget, run: TextRun): void {
     if (DECORATIONS[tag] === 1) underline = 1;
     if (tag === "a") color = true;
   });
-  attributedTextAppend(text, run.text, bold, italic, underline, size, ACCENT.r, ACCENT.g, ACCENT.b, color ? 1 : 0);
+  // A run's colour is fixed when it's appended, so a link's runs keep the light accent.
+  const [accent] = COLOURS.accent;
+  attributedTextAppend(text, run.text, bold, italic, underline, size, accent[0], accent[1], accent[2], color ? 1 : 0);
 }
 
 function setRuns(text: Widget, runs: TextRun[]): void {
@@ -705,7 +741,7 @@ const driver: NativeDriver = {
           setPadding(column, FIELDSET.padding);
           setCornerRadius(column, FIELDSET.radius);
           widgetSetBorderWidth(column, 1);
-          widgetSetBorderColor(column, 0, 0, 0, FIELDSET.alpha);
+          setBorder(column, "border");
           slotted.add(column);
         }
         return column;
@@ -743,7 +779,7 @@ const driver: NativeDriver = {
         else if (tag === "legend") textSetFontWeight(text, BODY, SEMIBOLD);
         else if (SMALLER.has(tag)) textSetFontSize(text, SMALL);
         else if (MONOSPACED.has(tag)) textSetFontFamily(text, "monospaced");
-        else if (tag === "mark") widgetSetBackgroundColor(text, MARK.r, MARK.g, MARK.b, 1);
+        else if (tag === "mark") markText(text);
         if (DECORATIONS[tag]) decorations.set(text, DECORATIONS[tag]);
         if (tag === "a") makeLink(text);
         if (tag === "summary") summaries.add(text);
