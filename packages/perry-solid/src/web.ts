@@ -52,7 +52,8 @@ dialog[open]:not(:modal) { position: static; display: flex; flex-direction: colu
 dialog:modal { display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; width: min(480px, calc(100% - 40px)); max-width: none; padding: 16px; border: 1px solid var(--perry-border); border-radius: 10px; background: var(--perry-box); color: inherit; }
 dialog::backdrop { background: light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.4)); }
 ul, ol { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-left: 20px; }
-button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: light-dark(#fff, rgb(101, 101, 101)); color: light-dark(#000, #fff); }
+button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: light-dark(#fff, rgb(101, 101, 101)); color: light-dark(#000, #fff);
+  box-shadow: 0 0 0 0.5px light-dark(rgba(0, 0, 0, 0.25), rgba(255, 255, 255, 0.1)), 0 1px 1px rgba(0, 0, 0, 0.1); }
 a { color: var(--perry-accent); align-self: flex-start; }
 img { align-self: flex-start; object-fit: fill; }
 iframe { align-self: flex-start; border: 0; }
