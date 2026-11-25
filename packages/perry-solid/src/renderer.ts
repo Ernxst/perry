@@ -1,6 +1,6 @@
-import { createRenderer } from "solid-js/universal";
+import { createRenderer } from "@solidjs/universal";
 import type { JSX } from "./jsx-runtime.ts";
-import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Accessor } from "solid-js";
+import { createRoot, flush, getOwner, onCleanup, merge, untrack, For as SolidFor, type Accessor } from "solid-js";
 
 export type ElementName =
   | "VStack" | "HStack" | "ZStack" | "Spacer" | "ScrollView"
@@ -342,7 +342,7 @@ export function createNativeRenderer(driver: NativeDriver) {
   function h<P>(type: Component<P>, props: P, ...children: Child[]): Child;
   function h(type: string | Component<any>, props: Props | null = null, ...children: Child[]): Child {
     const properties = children.length
-      ? mergeProps(props || {}, { children: children.length === 1 ? children[0] : children })
+      ? merge(props || {}, { children: children.length === 1 ? children[0] : children })
       : (props || {});
     if (typeof type === "function") return createComponent(type, properties);
     const node = createElement(type);
@@ -366,6 +366,7 @@ export function createNativeRenderer(driver: NativeDriver) {
       renderer.insert(root, code());
       return dispose;
     });
+    flush();
     let disposed = false;
     return () => {
       if (disposed) return;
@@ -379,5 +380,15 @@ export function createNativeRenderer(driver: NativeDriver) {
     };
   }
 
-  return { ...renderer, createComponent, render, h, removeNode };
+  // Perry's JSX compiler emits Solid 1's universal helpers: `effect` with one function that
+  // reads and writes, threading the previous values, and `use` for a `ref` callback.
+  function effect<T>(fn: (previous: T) => T, initial: T): void {
+    let previous = initial;
+    renderer.effect(() => { previous = fn(previous); }, () => {});
+  }
+  function use<T>(callback: (node: T) => void, node: T): void {
+    untrack(() => callback(node));
+  }
+
+  return { ...renderer, createComponent, effect, use, render, h, removeNode };
 }

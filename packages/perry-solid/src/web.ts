@@ -1,7 +1,7 @@
 // The web build's perry-solid: Solid renders the HTML elements itself, so this only
 // supplies the stack components, as divs, and a stylesheet that matches Perry's defaults.
 import { createRenderEffect, For as SolidFor, type Accessor } from "solid-js";
-import { insert, render as solidRender } from "solid-js/web";
+import { insert, render as solidRender } from "@solidjs/web";
 import type { JSX } from "./jsx-runtime.ts";
 import type { StackProps } from "./types.ts";
 export type { StackProps } from "./types.ts";
@@ -89,19 +89,25 @@ function stack(kind: string, props: StackProps): HTMLElement {
   const element = document.createElement("div");
   element.className = `perry-${kind}`;
   createRenderEffect(() => {
-    const { style } = element;
     const color = props.backgroundColor;
-    style.padding = px(props.padding);
-    style.borderRadius = px(props.cornerRadius);
-    style.width = px(props.width);
-    style.height = px(props.height);
-    style.opacity = props.opacity == null ? "" : String(props.opacity);
-    style.background = color ? `rgba(${color[0] * 255}, ${color[1] * 255}, ${color[2] * 255}, ${color[3]})` : "";
-    element.hidden = !!props.hidden;
+    const attributes: [string, unknown][] = [["tabindex", props.tabIndex]];
     for (const name of Object.keys(props)) {
-      if (name === "role" || name.startsWith("aria-")) setAttribute(element, name, props[name as keyof StackProps]);
+      if (name === "role" || name.startsWith("aria-")) attributes.push([name, props[name as keyof StackProps]]);
     }
-    setAttribute(element, "tabindex", props.tabIndex);
+    return {
+      padding: px(props.padding),
+      borderRadius: px(props.cornerRadius),
+      width: px(props.width),
+      height: px(props.height),
+      opacity: props.opacity == null ? "" : String(props.opacity),
+      background: color ? `rgba(${color[0] * 255}, ${color[1] * 255}, ${color[2] * 255}, ${color[3]})` : "",
+      hidden: !!props.hidden,
+      attributes,
+    };
+  }, ({ hidden, attributes, ...styles }) => {
+    Object.assign(element.style, styles);
+    element.hidden = hidden;
+    for (const [name, value] of attributes) setAttribute(element, name, value);
   });
   element.addEventListener("click", event => props.onClick?.(event));
   element.addEventListener("keydown", event => props.onKeyDown?.(event));

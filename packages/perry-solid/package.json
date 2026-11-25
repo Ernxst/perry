@@ -21,13 +21,17 @@
   ],
   "license": "MIT",
   "peerDependencies": {
-    "solid-js": "^1.9.15"
+    "solid-js": "^2.0.4",
+    "@solidjs/universal": "^2.0.4",
+    "@solidjs/web": "^2.0.4"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",
+    "@solidjs/universal": "2.0.4",
+    "@solidjs/web": "2.0.4",
     "@types/node": "26.4.1",
     "babel-preset-solid": "1.9.15",
-    "solid-js": "1.9.15",
+    "solid-js": "2.0.4",
     "typescript": "5.9.3"
   },
   "scripts": {
@@ -38,11 +42,15 @@
   "perry": {
     "nativeModule": true,
     "compilePackages": [
-      "solid-js"
+      "solid-js",
+      "@solidjs/signals",
+      "@solidjs/universal"
     ],
     "allow": {
       "compilePackages": [
-        "solid-js"
+        "solid-js",
+        "@solidjs/signals",
+        "@solidjs/universal"
       ]
     },
     "packageAliases": {
