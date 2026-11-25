@@ -4,7 +4,7 @@ import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Acce
 
 export type ElementName =
   | "VStack" | "HStack" | "ZStack" | "Spacer" | "ScrollView"
-  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
+  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Details" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
 
 /** What a native control reports to the `onInput` and `onChange` handlers, as `event.currentTarget`. */
 export interface ControlState {
@@ -77,13 +77,13 @@ const kinds: Record<string, ElementName> = {
   abbr: "Text", cite: "Text", dfn: "Text", time: "Text", address: "Text", figcaption: "Text",
   div: "VStack", main: "VStack", header: "VStack", footer: "VStack", nav: "VStack", section: "VStack",
   article: "VStack", aside: "VStack", figure: "VStack", search: "VStack", menu: "VStack",
-  ul: "VStack", ol: "VStack", li: "ListItem",
+  ul: "VStack", ol: "VStack", li: "ListItem", details: "Details", summary: "Text",
   button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress", meter: "Progress", output: "Text",
   input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label",
 };
 
 function isContainer(node: NativeNode): boolean {
-  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "ScrollView" || node.kind === "Picker" || node.kind === "Label" || node.kind === "ListItem" || node.kind === "#root";
+  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "ScrollView" || node.kind === "Picker" || node.kind === "Label" || node.kind === "ListItem" || node.kind === "Details" || node.kind === "#root";
 }
 
 export function createNativeRenderer(driver: NativeDriver) {
@@ -209,6 +209,10 @@ export function createNativeRenderer(driver: NativeDriver) {
     const previousIndex = previousParent ? previousParent.nodes.indexOf(node) : -1;
     if (previousParent) previousParent.nodes.splice(previousIndex, 1);
     const index = anchor ? parent.nodes.indexOf(anchor) : parent.nodes.length;
+    if (node.tag === "summary" && (parent.kind !== "Details" || index !== 0)) {
+      if (previousParent) previousParent.nodes.splice(previousIndex, 0, node);
+      throw new Error("<summary> goes first in <details>");
+    }
     parent.nodes.splice(index, 0, node);
     node.parent = parent;
 

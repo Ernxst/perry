@@ -92,6 +92,12 @@ export namespace JSX {
      * goes in a `span`: `<li><span>a <strong>b</strong></span></li>`.
      */
     li: BlockProps;
+    /**
+     * A `summary`, which must come first, and the children shown while open. Clicking the summary
+     * opens and closes it; natively that doesn't fire `onToggle`.
+     */
+    details: BlockProps & { open?: boolean };
+    summary: TextProps;
     /** Natively underlined text that opens `href` with the system when clicked; `target` has no effect there. */
     a: TextProps & { href?: string; target?: string };
     button: Common & { children?: Element; disabled?: boolean; onClick?: () => void };

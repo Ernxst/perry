@@ -104,6 +104,18 @@ const bodies = new Map<number, Widget>();
 // An <ol> numbers its items' markers.
 const lists = new Map<number, { ordered: boolean; items: number[] }>();
 const markers = new Map<number, Widget>();
+// A <details> is a column of a header row, its marker and summary, and a body column that
+// shows only while open. Without a <summary> the header reads "Details", as on the web.
+interface Disclosure {
+  marker: Widget;
+  header: Widget;
+  fallback: Widget;
+  body: Widget;
+  summary: number;
+  open: boolean;
+}
+const disclosures = new Map<number, Disclosure>();
+const summaries = new Set<number>();
 
 // An <img> is a stack holding the image, which is made again when src changes.
 interface Picture {
@@ -348,6 +360,40 @@ function createListItem(): Widget {
   return item;
 }
 
+function showDisclosure(disclosure: Disclosure): void {
+  textSetString(disclosure.marker, disclosure.open ? "▾" : "▸");
+  widgetSetHidden(disclosure.body, disclosure.open ? 0 : 1);
+}
+
+function toggleOnClick(widget: Widget, disclosure: Disclosure): void {
+  widgetSetOnClick(widget, () => {
+    disclosure.open = !disclosure.open;
+    showDisclosure(disclosure);
+  });
+}
+
+function createDetails(): Widget {
+  const details = NativeVStack(8, []);
+  const header = NativeHStack(6, []);
+  const marker = Text("");
+  const fallback = Text("Details");
+  const body = NativeVStack(8, []);
+  widgetAddChild(header, marker);
+  widgetAddChild(header, fallback);
+  widgetAddChild(details, header);
+  widgetAddChild(details, body);
+  widgetSetMaxWidth(body, 1e6);
+  columns.add(details);
+  columns.add(body);
+  slotted.add(details);
+  const disclosure: Disclosure = { marker, header, fallback, body, summary: 0, open: false };
+  toggleOnClick(marker, disclosure);
+  toggleOnClick(fallback, disclosure);
+  disclosures.set(details, disclosure);
+  showDisclosure(disclosure);
+  return details;
+}
+
 function unlist(parent: number, child: number): void {
   const list = lists.get(parent);
   if (!list || !list.items.includes(child)) return;
@@ -382,6 +428,7 @@ function createRichText(tag: string): Widget {
   if (tag === "mark") widgetSetBackgroundColor(text, MARK.r, MARK.g, MARK.b, 1);
   else slotted.add(text);
   if (tag === "a") makeLink(text);
+  if (tag === "summary") summaries.add(text);
   return text;
 }
 
@@ -447,8 +494,10 @@ const driver: NativeDriver = {
         else if (tag === "mark") widgetSetBackgroundColor(text, MARK.r, MARK.g, MARK.b, 1);
         if (DECORATIONS[tag]) decorations.set(text, DECORATIONS[tag]);
         if (tag === "a") makeLink(text);
+        if (tag === "summary") summaries.add(text);
         return text;
       }
+      case "Details": return createDetails();
       case "Image": {
         const wrapper = NativeHStack(0, []);
         images.set(wrapper, { wrapper, inner: 0, src: "", alt: "", width: undefined, height: undefined });
@@ -487,6 +536,11 @@ const driver: NativeDriver = {
     if (image && setImageProperty(image, name, value)) return;
     const bar = bars.get(handle);
     if (bar && setBarProperty(bar, name, value)) return;
+    const disclosure = disclosures.get(handle);
+    if (disclosure && name === "open") {
+      disclosure.open = !!value;
+      return showDisclosure(disclosure);
+    }
     const widget = handle as Widget;
     switch (name) {
       case "runs":
@@ -549,6 +603,19 @@ const driver: NativeDriver = {
       return;
     }
     if (previousParent !== null) unlist(previousParent, child);
+    const disclosure = disclosures.get(parent);
+    if (disclosure) {
+      if (previousParent !== null && __platform__ !== 0) widgetRemoveChild(previousParent as Widget, child as Widget);
+      if (summaries.has(child)) {
+        disclosure.summary = child;
+        widgetSetHidden(disclosure.fallback, 1);
+        toggleOnClick(child as Widget, disclosure);
+        return widgetAddChildAt(disclosure.header, child as Widget, 1);
+      }
+      widgetAddChildAt(disclosure.body, child as Widget, disclosure.summary ? index - 1 : index);
+      if (slotted.has(child)) widgetSetMaxWidth(child as Widget, 1e6);
+      return;
+    }
     const list = lists.get(parent);
     if (list) {
       list.items.splice(index, 0, child);
@@ -578,6 +645,11 @@ const driver: NativeDriver = {
       list.items.splice(to, 0, item);
       numberItems(list);
     }
+    const disclosure = disclosures.get(parent);
+    if (disclosure) {
+      const offset = disclosure.summary ? 1 : 0;
+      return widgetReorderChild(disclosure.body, from - offset, to - offset);
+    }
     const picker = controls.get(parent);
     if (!picker) return widgetReorderChild(parent as Widget, from, to);
     const [moved] = picker.options.splice(from, 1);
@@ -589,6 +661,13 @@ const driver: NativeDriver = {
     const label = labels.get(parent);
     if (label && label.control === child) label.control = 0;
     unlist(parent, child);
+    const disclosure = disclosures.get(parent);
+    if (disclosure) {
+      if (child !== disclosure.summary) return widgetRemoveChild(disclosure.body, child as Widget);
+      disclosure.summary = 0;
+      widgetSetHidden(disclosure.fallback, 0);
+      return widgetRemoveChild(disclosure.header, child as Widget);
+    }
     const picker = controls.get(parent);
     if (!picker) return widgetRemoveChild(parent as Widget, child as Widget);
     picker.options.splice(picker.options.indexOf(child), 1);
