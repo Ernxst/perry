@@ -1,9 +1,18 @@
 import { createRenderer } from "solid-js/universal";
+import type { JSX } from "./jsx-runtime.ts";
 import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Accessor } from "solid-js";
 
-export type ElementName = "VStack" | "HStack" | "ZStack" | "Text" | "Button" | "Spacer" | "Divider" | "Canvas";
+export type ElementName =
+  | "VStack" | "HStack" | "ZStack" | "Spacer"
+  | "Text" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option";
+
+/** What a native control reports to the `onInput` and `onChange` handlers, as `event.currentTarget`. */
+export interface ControlState {
+  value: string;
+  checked: boolean;
+}
 export type Props = Record<string, unknown>;
-export type Child = NativeNode | string | number | boolean | null | undefined | Child[] | (() => Child);
+export type Child = JSX.Element;
 export type Component<P = Props> = (props: P) => Child;
 
 /** Solid For with native children instead of DOM-specific JSX declarations. */
@@ -15,7 +24,8 @@ export const For = SolidFor as <T>(props: {
 
 /** Backend operations. Handles belong to the native widget registry. */
 export interface NativeDriver {
-  create(kind: ElementName, onPress: () => void): number;
+  /** `tag` is the JSX name; `emit` calls the element's handler for an event, such as `onClick`. */
+  create(kind: ElementName, tag: string, emit: (handler: string, state: ControlState) => void): number;
   setProperty(handle: number, kind: ElementName, name: string, value: unknown, previous: unknown): void;
   insert(parent: number, child: number, index: number, previousParent: number | null): void;
   move(parent: number, from: number, to: number): void;
@@ -40,11 +50,19 @@ export interface NativeNode {
 }
 
 function isLabel(node: NativeNode): boolean {
-  return node.kind === "Text" || node.kind === "Button";
+  return node.kind === "Text" || node.kind === "Button" || node.kind === "Option";
 }
 
+// JSX names, the shared code's web elements plus the stack components' own tags, to native kinds.
+const kinds: Record<string, ElementName> = {
+  vstack: "VStack", hstack: "HStack", zstack: "ZStack", spacer: "Spacer",
+  span: "Text", p: "Text", h1: "Text", h2: "Text", h3: "Text", small: "Text",
+  button: "Button", hr: "Divider", canvas: "Canvas",
+  input: "Input", textarea: "TextArea", select: "Picker", option: "Option",
+};
+
 function isContainer(node: NativeNode): boolean {
-  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "#root";
+  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "Picker" || node.kind === "#root";
 }
 
 export function createNativeRenderer(driver: NativeDriver) {
@@ -52,28 +70,16 @@ export function createNativeRenderer(driver: NativeDriver) {
     return { kind, handle: 0, materialized: false, parent: null, nodes: [], props: {}, text };
   }
 
-  function createElement(name: string): NativeNode {
-    // JSX intrinsic names are lowercase; the native driver uses Perry names.
-    switch (name) {
-      case "vstack": name = "VStack"; break;
-      case "hstack": name = "HStack"; break;
-      case "zstack": name = "ZStack"; break;
-      case "text": name = "Text"; break;
-      case "button": name = "Button"; break;
-      case "spacer": name = "Spacer"; break;
-      case "divider": name = "Divider"; break;
-      case "canvas": name = "Canvas"; break;
-    }
-    if (!["VStack", "HStack", "ZStack", "Text", "Button", "Spacer", "Divider", "Canvas"].includes(name)) {
-      throw new Error(`Unsupported Perry Solid element: ${name}`);
-    }
+  function createElement(tag: string): NativeNode {
+    const kind = kinds[tag];
+    if (!kind) throw new Error(`Unsupported element <${tag}>`);
     let node: NativeNode;
-    const handle = driver.create(name as ElementName, () => {
-      const callback = node.props.onPress;
-      if (typeof callback === "function") callback();
+    const handle = driver.create(kind, tag, (handler, state) => {
+      const callback = node.props[handler];
+      if (typeof callback === "function") callback({ currentTarget: state, target: state });
     });
-    const element = driver.element?.(name as ElementName, handle);
-    node = element ? Object.assign(element, makeNode(name as ElementName)) : makeNode(name as ElementName);
+    const element = driver.element?.(kind, handle);
+    node = element ? Object.assign(element, makeNode(kind)) : makeNode(kind);
     // A native button's dispatcher outlives a removed Solid owner. Release
     // user callbacks when that owner is disposed, even before native detach.
     if (getOwner()) onCleanup(() => { node.props = {}; });
@@ -86,7 +92,7 @@ export function createNativeRenderer(driver: NativeDriver) {
     // Text under a Text/Button contributes to its label. Allocate an independent
     // native Text only when the text node is actually inserted into a container.
     if (node.kind === "#text" && !node.materialized) {
-      node.handle = driver.create("Text", () => {});
+      node.handle = driver.create("Text", "span", () => {});
       node.materialized = true;
       driver.setProperty(node.handle, "Text", "text", node.text, undefined);
     }
@@ -112,9 +118,11 @@ export function createNativeRenderer(driver: NativeDriver) {
     if (anchor === node) return;
     if (anchor && anchor.parent !== parent) throw new Error("Insertion anchor belongs to another parent");
     if (isLabel(parent)) {
-      if (node.kind !== "#text") throw new Error("Text and Button children must be text");
+      if (node.kind !== "#text") throw new Error(`${parent.kind} children must be text`);
     } else if (!isContainer(parent)) {
       throw new Error(`${parent.kind} cannot contain children`);
+    } else if ((parent.kind === "Picker") !== (node.kind === "Option")) {
+      throw new Error("<option> goes in <select>, and <select> holds only <option>");
     }
     for (let ancestor: NativeNode | null = parent; ancestor; ancestor = ancestor.parent) {
       if (ancestor === node) throw new Error("Cannot insert a node into its own subtree");
@@ -148,9 +156,8 @@ export function createNativeRenderer(driver: NativeDriver) {
       if (node.parent && isLabel(node.parent)) refreshLabel(node.parent);
     },
     setProperty(node, name, value, previous) {
-      if (name === "onPress") {
-        if (node.kind !== "Button") throw new Error("onPress is supported on Button");
-        if (value != null && typeof value !== "function") throw new Error("onPress must be a function");
+      if (name.startsWith("on")) {
+        if (value != null && typeof value !== "function") throw new Error(`${name} must be a function`);
       } else {
         driver.setProperty(node.handle, node.kind as ElementName, name, value, previous);
       }
@@ -171,9 +178,9 @@ export function createNativeRenderer(driver: NativeDriver) {
   const createComponent = renderer.createComponent as <P>(component: (props: P) => Child, props: P) => Child;
 
   /** Native hyperscript. Reactive properties use getters; children may be accessors. */
-  function h(type: ElementName, props?: Props | null, ...children: Child[]): NativeNode;
+  function h(type: string, props?: Props | null, ...children: Child[]): NativeNode;
   function h<P>(type: Component<P>, props: P, ...children: Child[]): Child;
-  function h(type: ElementName | Component<any>, props: Props | null = null, ...children: Child[]): Child {
+  function h(type: string | Component<any>, props: Props | null = null, ...children: Child[]): Child {
     const properties = children.length
       ? mergeProps(props || {}, { children: children.length === 1 ? children[0] : children })
       : (props || {});

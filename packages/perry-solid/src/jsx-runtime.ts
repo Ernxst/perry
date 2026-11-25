@@ -1,34 +1,57 @@
-import type { Child, NativeNode, Props } from "./renderer.ts";
+import type { NativeNode } from "./renderer.ts";
 
-/** Types for JSX preserved for Perry's Solid compiler mode. */
+/**
+ * The HTML elements shared code may use. Natively each maps to a Perry widget; on the web
+ * Solid renders the real element, so only attributes both builds honour are listed.
+ */
 export namespace JSX {
-  export type Element = Child;
-  export type ElementType = keyof IntrinsicElements | ((props: any) => Child);
+  /** A native node in Perry builds and a DOM node on the web, plus what Solid accepts as children. */
+  export type Element = NativeNode | Node | string | number | boolean | null | undefined | Element[] | (() => Element);
+  export type ElementType = keyof IntrinsicElements | ((props: any) => Element);
   export interface ElementChildrenAttribute { children: {}; }
-  export interface NativeProps extends Props {
-    children?: Child;
-    ref?: NativeNode | ((node: NativeNode) => void);
-    text?: string;
-    onPress?: () => void;
-    width?: number;
-    height?: number;
-    opacity?: number;
+
+  /** What both builds pass to `onInput` and `onChange`. Natively both fire on every edit, so listen to `onInput`. */
+  export type ControlEvent = { currentTarget: { value: string; checked: boolean } };
+  type Handler = (event: ControlEvent) => void;
+
+  interface Common {
     hidden?: boolean;
-    disabled?: boolean;
-    tooltip?: string;
-    padding?: number;
-    cornerRadius?: number;
-    fontSize?: number;
-    backgroundColor?: [number, number, number, number];
+    title?: string;
   }
+  interface TextProps extends Common {
+    children?: Element;
+  }
+  interface ControlProps extends Common {
+    disabled?: boolean;
+    onInput?: Handler;
+    onChange?: Handler;
+  }
+
   export interface IntrinsicElements {
-    vstack: NativeProps;
-    hstack: NativeProps;
-    zstack: NativeProps;
-    text: NativeProps;
-    button: NativeProps;
-    spacer: NativeProps;
-    divider: NativeProps;
-    canvas: Omit<NativeProps, "ref"> & { ref?: HTMLCanvasElement | ((element: HTMLCanvasElement) => void) };
+    span: TextProps;
+    p: TextProps;
+    h1: TextProps;
+    h2: TextProps;
+    h3: TextProps;
+    small: TextProps;
+    button: Common & { children?: Element; disabled?: boolean; onClick?: () => void };
+    hr: Common;
+    canvas: Common & {
+      ref?: HTMLCanvasElement | ((element: HTMLCanvasElement) => void);
+      width?: number;
+      height?: number;
+    };
+    input: ControlProps & {
+      type?: "text" | "checkbox" | "range";
+      value?: string | number;
+      checked?: boolean;
+      placeholder?: string;
+      min?: number;
+      max?: number;
+      step?: number;
+    };
+    textarea: ControlProps & { value?: string; placeholder?: string };
+    select: ControlProps & { value?: string; children?: Element };
+    option: { value?: string; children?: string };
   }
 }

@@ -1,19 +1,32 @@
 import {
-  VStack, HStack, ZStack, Text, Button, Spacer, Divider, BloomView,
-  textSetString, buttonSetTitle, textSetFontSize,
-  widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
+  VStack as NativeVStack, HStack as NativeHStack, ZStack as NativeZStack, Spacer as NativeSpacer,
+  Text, Button, Divider, BloomView, TextField, TextArea, Toggle, Slider, Picker,
+  textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textfieldSetString, textareaSetString,
+  toggleSetState, pickerAddItem, pickerSetSelected,
+  widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip,
   widgetSetBackgroundColor, setCornerRadius, setPadding,
   type Widget,
 } from "perry/ui";
-import { canvasElement, setCanvasSize } from "#browser";
-import { createNativeRenderer, type NativeDriver, type ElementName } from "./renderer.ts";
+import { CanvasElement } from "perry-browser";
+import { createNativeRenderer, type ControlState, type NativeDriver, type Props } from "./renderer.ts";
+import type { JSX } from "./jsx-runtime.ts";
+import type { StackProps } from "./types.ts";
 export type { NativeNode, Child, Component, Props, ElementName } from "./renderer.ts";
+export type { StackProps } from "./types.ts";
 export { For } from "./renderer.ts";
 
 // Perry injects this target constant (0 = macOS, 1 = iOS, 2 = Android, 3 = Windows, 4 = Linux).
 declare const __platform__: number;
+
+// Matches the web build's stylesheet in web.ts.
+const HEADINGS: Record<string, number> = { h1: 26, h2: 20, h3: 16 };
+const SMALL = 11;
+const SEMIBOLD = 0.3;
+// AppKit text fields and sliders collapse in a stack unless given a width.
+const WIDTHS: Record<string, number> = { text: 200, range: 150, textarea: 200 };
+const TEXTAREA_HEIGHT = 60;
 
 function numeric(value: unknown, fallback: number): number {
   if (value == null) return fallback;
@@ -21,22 +34,182 @@ function numeric(value: unknown, fallback: number): number {
   return value;
 }
 
-const canvases = new Map<number, object>();
+// <input>, <textarea> and <select> are a native stack holding the real control. Solid
+// sets an element's props only after inserting it, and some props pick the control (an
+// input's type) or are fixed when it's made (placeholder, min, max, a select's options),
+// so the control is built, and rebuilt, a microtask after those props change.
+interface Control {
+  kind: "Input" | "TextArea" | "Picker";
+  wrapper: Widget;
+  inner: Widget | 0;
+  props: Record<string, unknown>;
+  options: number[];
+  /** The text the control last showed, so a controlled value echoing back isn't set again. */
+  shown: string;
+  scheduled: boolean;
+  emit: (handler: string, state: ControlState) => void;
+}
+
+interface Option {
+  label: string;
+  value: string | undefined;
+  picker: number;
+}
+
+const controls = new Map<number, Control>();
+// <option> has no widget; its handles are negative so they never clash with widget handles.
+const options = new Map<number, Option>();
+let nextOption = -1;
+const canvases = new Map<number, CanvasElement>();
+
+const REBUILDS: Record<Control["kind"], string[]> = {
+  Input: ["type", "placeholder", "min", "max"],
+  TextArea: ["placeholder"],
+  Picker: [],
+};
+const CONTROL_PROPS: Record<Control["kind"], string[]> = {
+  Input: ["type", "placeholder", "min", "max", "step", "value", "checked", "disabled", "title", "hidden"],
+  TextArea: ["placeholder", "value", "disabled", "title", "hidden"],
+  Picker: ["value", "disabled", "title", "hidden"],
+};
+
+function report(control: Control, state: ControlState): void {
+  control.emit("onInput", state);
+  control.emit("onChange", state);
+}
+
+function optionValue(option: Option): string {
+  return option.value ?? option.label;
+}
+
+function createControl(control: Control): Widget {
+  const props = control.props;
+  if (control.kind === "Picker") {
+    const picker = Picker(index => {
+      const option = options.get(control.options[index]);
+      control.shown = option ? optionValue(option) : "";
+      report(control, { value: control.shown, checked: false });
+    });
+    for (const handle of control.options) pickerAddItem(picker, options.get(handle)!.label);
+    return picker;
+  }
+  if (control.kind === "TextArea") {
+    return TextArea(String(props.placeholder ?? ""), value => {
+      control.shown = value;
+      report(control, { value, checked: false });
+    });
+  }
+  switch (props.type ?? "text") {
+    case "checkbox":
+      return Toggle("", on => {
+        props.checked = on;
+        report(control, { value: "on", checked: on });
+      });
+    case "range":
+      return Slider(numeric(props.min, 0), numeric(props.max, 100), value => {
+        report(control, { value: String(value), checked: false });
+      });
+    case "text":
+      return TextField(String(props.placeholder ?? ""), value => {
+        control.shown = value;
+        report(control, { value, checked: false });
+      });
+    default:
+      throw new Error(`Unsupported <input type="${String(props.type)}">`);
+  }
+}
+
+function applyControl(control: Control): void {
+  const inner = control.inner as Widget;
+  const props = control.props;
+  const type = control.kind === "Input" ? String(props.type ?? "text") : control.kind.toLowerCase();
+  if (type === "checkbox") {
+    toggleSetState(inner, props.checked ? 1 : 0);
+  } else if (type === "picker") {
+    const index = control.options.findIndex(handle => optionValue(options.get(handle)!) === String(props.value));
+    if (index >= 0) pickerSetSelected(inner, index);
+  } else if (type !== "range" && props.value != null && String(props.value) !== control.shown) {
+    // Perry's slider has no value setter, so a range input starts at min and only reports.
+    control.shown = String(props.value);
+    if (type === "textarea") textareaSetString(inner, control.shown);
+    else textfieldSetString(inner, control.shown);
+  }
+  if (props.disabled != null) {
+    // perry/ui panics when enabling or disabling a Toggle.
+    if (type === "checkbox") throw new Error("disabled is unsupported on <input type=\"checkbox\">");
+    widgetSetEnabled(inner, props.disabled ? 0 : 1);
+  }
+  widgetSetHidden(control.wrapper, props.hidden ? 1 : 0);
+  if (props.title != null) widgetSetTooltip(inner, String(props.title));
+  if (WIDTHS[type]) widgetSetWidth(inner, WIDTHS[type]);
+  if (type === "textarea") widgetSetHeight(inner, TEXTAREA_HEIGHT);
+}
+
+function build(control: Control): void {
+  control.scheduled = false;
+  const previous = control.inner;
+  control.inner = createControl(control);
+  if (previous !== 0) widgetRemoveChild(control.wrapper, previous);
+  widgetAddChild(control.wrapper, control.inner);
+  applyControl(control);
+}
+
+function schedule(control: Control): void {
+  if (control.scheduled) return;
+  control.scheduled = true;
+  void Promise.resolve().then(() => build(control));
+}
+
+function setControlProperty(control: Control, name: string, value: unknown): void {
+  if (!CONTROL_PROPS[control.kind].includes(name)) throw new Error(`${name} is unsupported on ${control.kind}`);
+  control.props[name] = value;
+  if (REBUILDS[control.kind].includes(name)) schedule(control);
+  else if (control.inner !== 0 && !control.scheduled) applyControl(control);
+}
+
+function setOptionProperty(option: Option, name: string, value: unknown): void {
+  if (name === "text") option.label = value == null ? "" : String(value);
+  else if (name === "value") option.value = value == null ? undefined : String(value);
+  else throw new Error(`${name} is unsupported on <option>`);
+  if (option.picker !== 0) schedule(controls.get(option.picker)!);
+}
 
 const driver: NativeDriver = {
-  create(kind: ElementName, onPress: () => void): number {
+  create(kind, tag, emit): number {
     switch (kind) {
-      case "VStack": return VStack(8, []);
-      case "HStack": return HStack(8, []);
-      case "ZStack": return ZStack();
-      case "Text": return Text("");
-      case "Button": return Button("", onPress);
-      case "Spacer": return Spacer();
+      case "VStack": return NativeVStack(8, []);
+      case "HStack": return NativeHStack(8, []);
+      case "ZStack": return NativeZStack();
+      case "Spacer": return NativeSpacer();
+      case "Text": {
+        const text = Text("");
+        if (HEADINGS[tag]) textSetFontWeight(text, HEADINGS[tag], SEMIBOLD);
+        else if (tag === "small") textSetFontSize(text, SMALL);
+        return text;
+      }
+      case "Button": return Button("", () => emit("onClick", { value: "", checked: false }));
       case "Divider": return Divider();
       case "Canvas": return BloomView(0, 0);
+      case "Option": {
+        const handle = nextOption--;
+        options.set(handle, { label: "", value: undefined, picker: 0 });
+        return handle;
+      }
+      case "Input":
+      case "TextArea":
+      case "Picker": {
+        const wrapper = NativeHStack(0, []);
+        controls.set(wrapper, { kind, wrapper, inner: 0, props: {}, options: [], shown: "", scheduled: false, emit });
+        schedule(controls.get(wrapper)!);
+        return wrapper;
+      }
     }
   },
   setProperty(handle, kind, name, value) {
+    const control = controls.get(handle);
+    if (control) return setControlProperty(control, name, value);
+    const option = options.get(handle);
+    if (option) return setOptionProperty(option, name, value);
     const widget = handle as Widget;
     switch (name) {
       case "text":
@@ -46,36 +219,36 @@ const driver: NativeDriver = {
         return;
       case "width":
         widgetSetWidth(widget, numeric(value, 0));
-        if (kind === "Canvas") setCanvasSize(canvases.get(handle), name, numeric(value, 0));
+        if (kind === "Canvas") canvases.get(handle)!.clientWidth = numeric(value, 0);
         return;
       case "height":
         widgetSetHeight(widget, numeric(value, 0));
-        if (kind === "Canvas") setCanvasSize(canvases.get(handle), name, numeric(value, 0));
+        if (kind === "Canvas") canvases.get(handle)!.clientHeight = numeric(value, 0);
         return;
       case "opacity": widgetSetOpacity(widget, numeric(value, 1)); return;
       case "hidden": widgetSetHidden(widget, value ? 1 : 0); return;
       case "disabled": widgetSetEnabled(widget, value ? 0 : 1); return;
-      case "tooltip": widgetSetTooltip(widget, value == null ? "" : String(value)); return;
+      case "title": widgetSetTooltip(widget, value == null ? "" : String(value)); return;
       case "cornerRadius": setCornerRadius(widget, numeric(value, 0)); return;
-      case "padding": {
-        const amount = numeric(value, 0);
-        setPadding(widget, amount);
-        return;
-      }
-      case "fontSize":
-        if (kind !== "Text") throw new Error("fontSize is supported on Text");
-        textSetFontSize(widget, numeric(value, 13));
-        return;
+      case "padding": setPadding(widget, numeric(value, 0)); return;
       case "backgroundColor": {
         const color = value == null ? [0, 0, 0, 0] : value;
         if (!Array.isArray(color) || color.length !== 4) throw new Error("backgroundColor expects [r, g, b, a]");
         widgetSetBackgroundColor(widget, numeric(color[0], 0), numeric(color[1], 0), numeric(color[2], 0), numeric(color[3], 0));
         return;
       }
-      default: throw new Error(`Unsupported Perry Solid property: ${name}`);
+      default: throw new Error(`${name} is unsupported on ${kind}`);
     }
   },
   insert(parent, child, index, previousParent) {
+    const picker = controls.get(parent);
+    if (picker) {
+      if (previousParent !== null) driver.remove(previousParent, child);
+      picker.options.splice(index, 0, child);
+      options.get(child)!.picker = parent;
+      schedule(picker);
+      return;
+    }
     // AppKit's indexed insertion detaches without destroying retained layout
     // metadata. Other backends need the old parent explicitly cleared first.
     if (previousParent !== null && __platform__ !== 0) {
@@ -83,11 +256,23 @@ const driver: NativeDriver = {
     }
     widgetAddChildAt(parent as Widget, child as Widget, index);
   },
-  move(parent, from, to) { widgetReorderChild(parent as Widget, from, to); },
-  remove(parent, child) { widgetRemoveChild(parent as Widget, child as Widget); },
+  move(parent, from, to) {
+    const picker = controls.get(parent);
+    if (!picker) return widgetReorderChild(parent as Widget, from, to);
+    const [moved] = picker.options.splice(from, 1);
+    picker.options.splice(to, 0, moved);
+    schedule(picker);
+  },
+  remove(parent, child) {
+    const picker = controls.get(parent);
+    if (!picker) return widgetRemoveChild(parent as Widget, child as Widget);
+    picker.options.splice(picker.options.indexOf(child), 1);
+    options.get(child)!.picker = 0;
+    schedule(picker);
+  },
   element(kind, handle) {
     if (kind !== "Canvas") return undefined;
-    const canvas = canvasElement(handle);
+    const canvas = new CanvasElement(handle);
     canvases.set(handle, canvas);
     return canvas;
   },
@@ -107,3 +292,8 @@ export const effect = native.effect;
 export const memo = native.memo;
 export const mergeProps = native.mergeProps;
 export const use = native.use;
+
+export function VStack(props: StackProps): JSX.Element { return native.h("vstack", props as Props); }
+export function HStack(props: StackProps): JSX.Element { return native.h("hstack", props as Props); }
+export function ZStack(props: StackProps): JSX.Element { return native.h("zstack", props as Props); }
+export function Spacer(): JSX.Element { return native.h("spacer", null); }
