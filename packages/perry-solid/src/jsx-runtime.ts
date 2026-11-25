@@ -10,7 +10,10 @@ export namespace JSX {
   export type ElementType = keyof IntrinsicElements | ((props: any) => Element);
   export interface ElementChildrenAttribute { children: {}; }
 
-  /** What both builds pass to `onInput` and `onChange`. Natively both fire on every edit, so listen to `onInput`. */
+  /**
+   * What both builds pass to `onInput` and `onChange`. A text input's `onChange` fires when editing ends in both;
+   * natively a textarea, slider or select fires both handlers on every change.
+   */
   export type ControlEvent = { currentTarget: { value: string; checked: boolean } };
   type Handler = (event: ControlEvent) => void;
 

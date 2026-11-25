@@ -2,7 +2,7 @@ import {
   VStack as NativeVStack, HStack as NativeHStack, ZStack as NativeZStack, Spacer as NativeSpacer,
   Text, Button, Divider, BloomView, TextField, TextArea, Toggle, Slider, Picker,
   textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textfieldSetString, textareaSetString,
-  toggleSetState, pickerAddItem, pickerSetSelected,
+  toggleSetState, pickerAddItem, pickerSetSelected, textfieldSetOnSubmit,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip,
@@ -109,11 +109,15 @@ function createControl(control: Control): Widget {
       return Slider(numeric(props.min, 0), numeric(props.max, 100), value => {
         report(control, { value: String(value), checked: false });
       });
-    case "text":
-      return TextField(String(props.placeholder ?? ""), value => {
+    case "text": {
+      // As on the web, onChange fires when editing ends: on Return or when the field loses focus.
+      const field = TextField(String(props.placeholder ?? ""), value => {
         control.shown = value;
-        report(control, { value, checked: false });
+        control.emit("onInput", { value, checked: false });
       });
+      textfieldSetOnSubmit(field, () => control.emit("onChange", { value: control.shown, checked: false }));
+      return field;
+    }
     default:
       throw new Error(`Unsupported <input type="${String(props.type)}">`);
   }
