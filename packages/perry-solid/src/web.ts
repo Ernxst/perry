@@ -3,8 +3,8 @@
 import { createRenderEffect, For as SolidFor, type Accessor } from "solid-js";
 import { insert, render as solidRender } from "solid-js/web";
 import type { JSX } from "./jsx-runtime.ts";
-import type { StackProps, TableProps } from "./types.ts";
-export type { StackProps, TableColumn, TableProps } from "./types.ts";
+import type { StackProps } from "./types.ts";
+export type { StackProps } from "./types.ts";
 
 export const For = SolidFor as <T>(props: {
   each: readonly T[] | false | null | undefined;
@@ -53,11 +53,6 @@ progress::-webkit-progress-value, meter::-webkit-meter-optimum-value { backgroun
 progress::-moz-progress-bar, meter::-moz-meter-bar { background: rgb(0, 104, 218); }
 hr { align-self: stretch; margin: 0; border: 0; border-top: 1px solid #0002; }
 label { display: flex; align-items: center; gap: 8px; align-self: flex-start; }
-.perry-table { align-self: flex-start; overflow: auto; background: #fff; border: 1px solid rgba(0, 0, 0, 0.2); box-sizing: border-box; }
-.perry-table table { border-collapse: collapse; table-layout: fixed; }
-.perry-table th { position: sticky; top: 0; background: #fff; font-weight: 400; text-align: left; padding: 3px 6px; border-bottom: 1px solid rgba(0, 0, 0, 0.2); }
-.perry-table td { padding: 3px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.perry-table tr.perry-selected td { background: rgb(0, 104, 218); color: #fff; }
 input, textarea, select { font: inherit; align-self: flex-start; }
 input:is(:not([type]), [type=text], [type=password], [type=search], [type=email], [type=url], [type=tel], [type=number]), textarea {
   width: 200px; box-sizing: border-box;
@@ -98,41 +93,6 @@ export function ZStack(props: StackProps): JSX.Element { return stack("zstack", 
 export function Spacer(): JSX.Element { return stack("spacer", {}); }
 /** A column that scrolls vertically when its children overflow its `height`. */
 export function ScrollView(props: StackProps): JSX.Element { return stack("scrollview", props); }
-
-/** A scrolling table of rows, one cell of text per column; `<table>` itself isn't supported natively. */
-export function Table<T>(props: TableProps<T>): JSX.Element {
-  const wrapper = document.createElement("div");
-  wrapper.className = "perry-table";
-  const table = wrapper.appendChild(document.createElement("table"));
-  const head = table.createTHead().insertRow();
-  const body = table.createTBody();
-  createRenderEffect(() => {
-    head.replaceChildren(...props.columns.map(column => {
-      const cell = document.createElement("th");
-      cell.textContent = column.title;
-      cell.style.width = px(column.width ?? 100);
-      return cell;
-    }));
-    const width = props.columns.reduce((sum, column) => sum + (column.width ?? 100), 0);
-    wrapper.style.width = px(props.width ?? width);
-    wrapper.style.height = px(props.height ?? 200);
-    wrapper.hidden = !!props.hidden;
-  });
-  createRenderEffect(() => {
-    const columns = props.columns;
-    body.replaceChildren(...props.rows.map((row, index) => {
-      const line = document.createElement("tr");
-      for (const column of columns) line.insertCell().textContent = column.cell(row);
-      line.onclick = () => {
-        body.querySelector(".perry-selected")?.classList.remove("perry-selected");
-        line.classList.add("perry-selected");
-        props.onSelect?.(row, index);
-      };
-      return line;
-    }));
-  });
-  return wrapper;
-}
 
 /** Solid's DOM `render`, typed for elements written against perry-solid's JSX. */
 export const render = solidRender as (code: () => JSX.Element, element: HTMLElement) => () => void;

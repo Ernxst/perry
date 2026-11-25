@@ -4,7 +4,7 @@ import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Acce
 
 export type ElementName =
   | "VStack" | "HStack" | "ZStack" | "Spacer" | "ScrollView"
-  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Details" | "Dialog" | "Frame" | "Datalist" | "Table" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
+  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Details" | "Dialog" | "Frame" | "Datalist" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
 
 /** What a native control reports to the `onInput` and `onChange` handlers, as `event.currentTarget`. */
 export interface ControlState {
@@ -70,7 +70,7 @@ function isLabel(node: NativeNode): boolean {
 
 // JSX names, the shared code's web elements plus the stack components' own tags, to native kinds.
 const kinds: Record<string, ElementName> = {
-  vstack: "VStack", hstack: "HStack", zstack: "ZStack", spacer: "Spacer", scrollview: "ScrollView", table: "Table",
+  vstack: "VStack", hstack: "HStack", zstack: "ZStack", spacer: "Spacer", scrollview: "ScrollView",
   span: "Text", p: "Text", h1: "Text", h2: "Text", h3: "Text", h4: "Text", h5: "Text", h6: "Text", small: "Text", a: "Text",
   strong: "Text", b: "Text", em: "Text", i: "Text", u: "Text", ins: "Text", s: "Text", del: "Text",
   code: "Text", kbd: "Text", samp: "Text", var: "Text", pre: "Text", mark: "Text", sub: "Text", sup: "Text",
