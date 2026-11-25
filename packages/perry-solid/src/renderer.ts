@@ -18,15 +18,16 @@ export interface TextRun {
   tags: string[];
 }
 export type Props = Record<string, unknown>;
-export type Child = JSX.Element;
+/** What `h` takes as a child: an element, or a function the renderer tracks for one. */
+export type Child = JSX.Element | (() => Child);
 export type Component<P = Props> = (props: P) => Child;
 
 /** Solid For with native children instead of DOM-specific JSX declarations. */
 export const For = SolidFor as <T>(props: {
   each: readonly T[] | false | null | undefined;
-  fallback?: Child;
-  children: (item: T, index: Accessor<number>) => Child;
-}) => Child;
+  fallback?: JSX.Element;
+  children: (item: T, index: Accessor<number>) => JSX.Element;
+}) => JSX.Element;
 
 /** Backend operations. Handles belong to the native widget registry. */
 export interface NativeDriver {

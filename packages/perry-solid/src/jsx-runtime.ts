@@ -1,3 +1,4 @@
+import type { JSX as WebJSX } from "@solidjs/web";
 import type { NativeNode } from "./renderer.ts";
 
 /**
@@ -5,8 +6,12 @@ import type { NativeNode } from "./renderer.ts";
  * Solid renders the real element, so only attributes both builds honour are listed.
  */
 export namespace JSX {
-  /** A native node in Perry builds and a DOM node on the web, plus what Solid accepts as children. */
-  export type Element = NativeNode | Node | string | number | boolean | null | undefined | Element[] | (() => Element);
+  /**
+   * A native node in Perry builds and a DOM node on the web, plus what Solid accepts as children.
+   * It is Solid's own web element type, so components written for the web, like a headless
+   * library's, are valid in shared code and accept shared children.
+   */
+  export type Element = NativeNode | WebJSX.Element;
   export type ElementType = keyof IntrinsicElements | ((props: any) => Element);
   export interface ElementChildrenAttribute { children: {}; }
 
