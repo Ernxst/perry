@@ -56,5 +56,7 @@ export namespace JSX {
     textarea: ControlProps & { value?: string; placeholder?: string };
     select: ControlProps & { value?: string; children?: Element };
     option: { value?: string; children?: string };
+    /** Natively a row; clicking its text flips a checkbox inside it. */
+    label: Common & { children?: Element };
   }
 }

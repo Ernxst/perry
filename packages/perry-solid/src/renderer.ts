@@ -4,7 +4,7 @@ import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Acce
 
 export type ElementName =
   | "VStack" | "HStack" | "ZStack" | "Spacer"
-  | "Text" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option";
+  | "Text" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
 
 /** What a native control reports to the `onInput` and `onChange` handlers, as `event.currentTarget`. */
 export interface ControlState {
@@ -58,11 +58,11 @@ const kinds: Record<string, ElementName> = {
   vstack: "VStack", hstack: "HStack", zstack: "ZStack", spacer: "Spacer",
   span: "Text", p: "Text", h1: "Text", h2: "Text", h3: "Text", small: "Text",
   button: "Button", hr: "Divider", canvas: "Canvas",
-  input: "Input", textarea: "TextArea", select: "Picker", option: "Option",
+  input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label",
 };
 
 function isContainer(node: NativeNode): boolean {
-  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "Picker" || node.kind === "#root";
+  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "Picker" || node.kind === "Label" || node.kind === "#root";
 }
 
 export function createNativeRenderer(driver: NativeDriver) {

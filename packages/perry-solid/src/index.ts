@@ -5,7 +5,7 @@ import {
   toggleSetState, pickerAddItem, pickerSetSelected, textfieldSetOnSubmit,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
-  widgetSetHidden, widgetSetEnabled, widgetSetTooltip,
+  widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
   widgetSetBackgroundColor, setCornerRadius, setPadding,
   type Widget,
 } from "perry/ui";
@@ -61,6 +61,8 @@ const controls = new Map<number, Control>();
 const options = new Map<number, Option>();
 let nextOption = -1;
 const canvases = new Map<number, CanvasElement>();
+// A <label> natively is a stack; clicking its text flips the checkbox inside it, as on the web.
+const labels = new Map<number, { control: number }>();
 
 const REBUILDS: Record<Control["kind"], string[]> = {
   Input: ["type", "placeholder", "min", "max"],
@@ -76,6 +78,13 @@ const CONTROL_PROPS: Record<Control["kind"], string[]> = {
 function report(control: Control, state: ControlState): void {
   control.emit("onInput", state);
   control.emit("onChange", state);
+}
+
+function toggle(control: Control): void {
+  const on = !control.props.checked;
+  control.props.checked = on;
+  toggleSetState(control.inner as Widget, on ? 1 : 0);
+  report(control, { value: "on", checked: on });
 }
 
 function optionValue(option: Option): string {
@@ -194,6 +203,11 @@ const driver: NativeDriver = {
       case "Button": return Button("", () => emit("onClick", { value: "", checked: false }));
       case "Divider": return Divider();
       case "Canvas": return BloomView(0, 0);
+      case "Label": {
+        const label = NativeHStack(8, []);
+        labels.set(label, { control: 0 });
+        return label;
+      }
       case "Option": {
         const handle = nextOption--;
         options.set(handle, { label: "", value: undefined, picker: 0 });
@@ -253,6 +267,14 @@ const driver: NativeDriver = {
       schedule(picker);
       return;
     }
+    const label = labels.get(parent);
+    if (label) {
+      if (controls.has(child)) label.control = child;
+      else widgetSetOnClick(child as Widget, () => {
+        const control = controls.get(label.control);
+        if (control && control.inner !== 0 && control.props.type === "checkbox") toggle(control);
+      });
+    }
     // AppKit's indexed insertion detaches without destroying retained layout
     // metadata. Other backends need the old parent explicitly cleared first.
     if (previousParent !== null && __platform__ !== 0) {
@@ -268,6 +290,8 @@ const driver: NativeDriver = {
     schedule(picker);
   },
   remove(parent, child) {
+    const label = labels.get(parent);
+    if (label && label.control === child) label.control = 0;
     const picker = controls.get(parent);
     if (!picker) return widgetRemoveChild(parent as Widget, child as Widget);
     picker.options.splice(picker.options.indexOf(child), 1);

@@ -28,6 +28,7 @@ h1, h2, h3 { font-weight: 600; }
 h1 { font-size: 26px; } h2 { font-size: 20px; } h3 { font-size: 16px; } small { font-size: 11px; }
 button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: #fff; color: #000; }
 hr { align-self: stretch; margin: 0; border: 0; border-top: 1px solid #0002; }
+label { display: flex; align-items: center; gap: 8px; align-self: flex-start; }
 input, textarea, select { font: inherit; align-self: flex-start; }
 input[type=text], textarea { width: 200px; box-sizing: border-box; }
 textarea { height: 60px; }
