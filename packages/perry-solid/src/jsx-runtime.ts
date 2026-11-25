@@ -17,9 +17,16 @@ export namespace JSX {
   export type ControlEvent = { currentTarget: { value: string; checked: boolean } };
   type Handler = (event: ControlEvent) => void;
 
+  /**
+   * `role`, `tabIndex` and the `aria-*` attributes reach assistive technology on the web; natively
+   * they're accepted and have no effect.
+   */
   interface Common {
     hidden?: boolean;
     title?: string;
+    role?: string;
+    tabIndex?: number;
+    [aria: `aria-${string}`]: string | number | boolean | undefined;
   }
   /**
    * Natively the event is only `currentTarget` and `target`, both the element, with no pointer

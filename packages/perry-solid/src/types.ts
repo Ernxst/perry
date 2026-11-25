@@ -11,5 +11,9 @@ export interface StackProps {
   height?: number;
   opacity?: number;
   hidden?: boolean;
+  /** These and the `aria-*` attributes have no effect natively, as on the HTML elements. */
+  role?: string;
+  tabIndex?: number;
+  [aria: `aria-${string}`]: string | number | boolean | undefined;
   onClick?: (event: unknown) => void;
 }

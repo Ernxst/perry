@@ -72,6 +72,11 @@ function px(value: number | undefined): string {
   return value == null ? "" : `${value}px`;
 }
 
+function setAttribute(element: HTMLElement, name: string, value: unknown): void {
+  if (value == null) element.removeAttribute(name);
+  else element.setAttribute(name, String(value));
+}
+
 function stack(kind: string, props: StackProps): HTMLElement {
   const element = document.createElement("div");
   element.className = `perry-${kind}`;
@@ -85,6 +90,10 @@ function stack(kind: string, props: StackProps): HTMLElement {
     style.opacity = props.opacity == null ? "" : String(props.opacity);
     style.background = color ? `rgba(${color[0] * 255}, ${color[1] * 255}, ${color[2] * 255}, ${color[3]})` : "";
     element.hidden = !!props.hidden;
+    for (const name of Object.keys(props)) {
+      if (name === "role" || name.startsWith("aria-")) setAttribute(element, name, props[name as keyof StackProps]);
+    }
+    setAttribute(element, "tabindex", props.tabIndex);
   });
   element.addEventListener("click", event => props.onClick?.(event));
   insert(element, () => props.children);
