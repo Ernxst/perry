@@ -23,6 +23,7 @@ body { margin: 0; font: 13px system-ui, sans-serif; }
 .perry-zstack > * { grid-area: 1 / 1; }
 .perry-zstack > canvas { width: 100%; height: 100%; }
 .perry-spacer { flex: 1; }
+.perry-scrollview { display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; overflow-y: auto; }
 h1, h2, h3, p, small { margin: 0; }
 h1, h2, h3 { font-weight: 600; }
 h1 { font-size: 26px; } h2 { font-size: 20px; } h3 { font-size: 16px; } small { font-size: 11px; }
@@ -71,6 +72,8 @@ export function VStack(props: StackProps): JSX.Element { return stack("vstack", 
 export function HStack(props: StackProps): JSX.Element { return stack("hstack", props); }
 export function ZStack(props: StackProps): JSX.Element { return stack("zstack", props); }
 export function Spacer(): JSX.Element { return stack("spacer", {}); }
+/** A column that scrolls vertically when its children overflow its `height`. */
+export function ScrollView(props: StackProps): JSX.Element { return stack("scrollview", props); }
 
 /** Solid's DOM `render`, typed for elements written against perry-solid's JSX. */
 export const render = solidRender as (code: () => JSX.Element, element: HTMLElement) => () => void;

@@ -1,6 +1,6 @@
 import type { JSX } from "./jsx-runtime.ts";
 
-/** Props of `VStack`, `HStack` and `ZStack`. Sizes are in points natively and CSS pixels on the web. */
+/** Props of `VStack`, `HStack`, `ZStack` and `ScrollView`. Sizes are in points natively and CSS pixels on the web. */
 export interface StackProps {
   children?: JSX.Element;
   padding?: number;

@@ -3,7 +3,7 @@ import type { JSX } from "./jsx-runtime.ts";
 import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Accessor } from "solid-js";
 
 export type ElementName =
-  | "VStack" | "HStack" | "ZStack" | "Spacer"
+  | "VStack" | "HStack" | "ZStack" | "Spacer" | "ScrollView"
   | "Image" | "Progress" | "Text" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
 
 /** What a native control reports to the `onInput` and `onChange` handlers, as `event.currentTarget`. */
@@ -55,14 +55,14 @@ function isLabel(node: NativeNode): boolean {
 
 // JSX names, the shared code's web elements plus the stack components' own tags, to native kinds.
 const kinds: Record<string, ElementName> = {
-  vstack: "VStack", hstack: "HStack", zstack: "ZStack", spacer: "Spacer",
+  vstack: "VStack", hstack: "HStack", zstack: "ZStack", spacer: "Spacer", scrollview: "ScrollView",
   span: "Text", p: "Text", h1: "Text", h2: "Text", h3: "Text", small: "Text", a: "Text",
   button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress",
   input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label",
 };
 
 function isContainer(node: NativeNode): boolean {
-  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "Picker" || node.kind === "Label" || node.kind === "#root";
+  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "ScrollView" || node.kind === "Picker" || node.kind === "Label" || node.kind === "#root";
 }
 
 export function createNativeRenderer(driver: NativeDriver) {

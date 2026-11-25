@@ -1,5 +1,6 @@
 import {
   VStack as NativeVStack, HStack as NativeHStack, ZStack as NativeZStack, Spacer as NativeSpacer,
+  ScrollView as NativeScrollView, scrollviewSetChild,
   Text, Button, Divider, BloomView, TextField, SecureField, TextArea, Toggle, Slider, Picker, DatePicker,
   Image, ImageFile, ProgressView,
   textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetColor, textSetDecoration,
@@ -78,6 +79,8 @@ const columns = new Set<number>();
 const slotted = new Set<number>();
 // An <a> is text that opens its href when clicked.
 const links = new Map<number, string>();
+// A ScrollView's children go into a column inside it, since Perry's scroll view holds one child.
+const scrolls = new Map<number, Widget>();
 
 // An <img> is a stack holding the image, which is made again when src changes.
 interface Picture {
@@ -320,6 +323,14 @@ const driver: NativeDriver = {
       }
       case "ZStack": return NativeZStack();
       case "Spacer": return NativeSpacer();
+      case "ScrollView": {
+        const scroll = NativeScrollView();
+        const content = NativeVStack(8, []);
+        columns.add(content);
+        scrollviewSetChild(scroll, content);
+        scrolls.set(scroll, content);
+        return scroll;
+      }
       case "Text": {
         const text = Text("");
         slotted.add(text);
@@ -397,7 +408,7 @@ const driver: NativeDriver = {
       case "disabled": widgetSetEnabled(widget, value ? 0 : 1); return;
       case "title": widgetSetTooltip(widget, value == null ? "" : String(value)); return;
       case "cornerRadius": setCornerRadius(widget, numeric(value, 0)); return;
-      case "padding": setPadding(widget, numeric(value, 0)); return;
+      case "padding": setPadding(scrolls.get(handle) ?? widget, numeric(value, 0)); return;
       case "href":
         if (!links.has(handle)) throw new Error(`href is unsupported on ${kind}`);
         links.set(handle, value == null ? "" : String(value));
@@ -412,6 +423,8 @@ const driver: NativeDriver = {
     }
   },
   insert(parent, child, index, previousParent) {
+    parent = scrolls.get(parent) ?? parent;
+    if (previousParent !== null) previousParent = scrolls.get(previousParent) ?? previousParent;
     const picker = controls.get(parent);
     if (picker) {
       if (previousParent !== null) driver.remove(previousParent, child);
@@ -437,6 +450,7 @@ const driver: NativeDriver = {
     if (columns.has(parent) && slotted.has(child)) widgetSetMaxWidth(child as Widget, 1e6);
   },
   move(parent, from, to) {
+    parent = scrolls.get(parent) ?? parent;
     const picker = controls.get(parent);
     if (!picker) return widgetReorderChild(parent as Widget, from, to);
     const [moved] = picker.options.splice(from, 1);
@@ -444,6 +458,7 @@ const driver: NativeDriver = {
     schedule(picker);
   },
   remove(parent, child) {
+    parent = scrolls.get(parent) ?? parent;
     const label = labels.get(parent);
     if (label && label.control === child) label.control = 0;
     const picker = controls.get(parent);
@@ -479,3 +494,4 @@ export function VStack(props: StackProps): JSX.Element { return native.h("vstack
 export function HStack(props: StackProps): JSX.Element { return native.h("hstack", props as Props); }
 export function ZStack(props: StackProps): JSX.Element { return native.h("zstack", props as Props); }
 export function Spacer(): JSX.Element { return native.h("spacer", null); }
+export function ScrollView(props: StackProps): JSX.Element { return native.h("scrollview", props as Props); }
