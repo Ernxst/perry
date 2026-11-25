@@ -38,7 +38,9 @@ const MARK = { r: 1, g: 1, b: 0 };
 // A plain Perry Text can't be italic, so these show through AttributedText even alone.
 const ITALIC = new Set(["em", "i", "var", "cite", "dfn", "address"]);
 // AppKit text fields and sliders collapse in a stack unless given a width.
-const WIDTHS: Record<string, number> = { text: 200, password: 200, range: 150, textarea: 200, date: 130 };
+const WIDTHS: Record<string, number> = {
+  text: 200, password: 200, search: 200, email: 200, url: 200, tel: 200, number: 200, range: 150, textarea: 200, date: 130,
+};
 const TEXTAREA_HEIGHT = 60;
 const PROGRESS_WIDTH = 150;
 const PROGRESS_HEIGHT = 6;
@@ -176,7 +178,12 @@ function createControl(control: Control): Widget {
         report(control, { value, checked: false });
       });
     case "text":
-    case "password": {
+    case "password":
+    case "search":
+    case "email":
+    case "url":
+    case "tel":
+    case "number": {
       // As on the web, onChange fires when editing ends: on Return or when the field loses focus.
       const onInput = (value: string) => {
         control.shown = value;

@@ -99,7 +99,7 @@ export namespace JSX {
       height?: number;
     };
     input: ControlProps & {
-      type?: "text" | "password" | "checkbox" | "range" | "date";
+      type?: "text" | "password" | "search" | "email" | "url" | "tel" | "number" | "checkbox" | "range" | "date";
       value?: string | number;
       checked?: boolean;
       placeholder?: string;

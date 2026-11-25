@@ -45,7 +45,9 @@ progress::-moz-progress-bar { background: rgb(0, 104, 218); }
 hr { align-self: stretch; margin: 0; border: 0; border-top: 1px solid #0002; }
 label { display: flex; align-items: center; gap: 8px; align-self: flex-start; }
 input, textarea, select { font: inherit; align-self: flex-start; }
-input[type=text], input[type=password], textarea { width: 200px; box-sizing: border-box; }
+input:is([type=text], [type=password], [type=search], [type=email], [type=url], [type=tel], [type=number]), textarea {
+  width: 200px; box-sizing: border-box;
+}
 textarea { height: 60px; }
 input[type=range] { width: 150px; }
 `;
