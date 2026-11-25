@@ -101,6 +101,8 @@ let nextOption = -1;
 const canvases = new Map<number, CanvasElement>();
 // A <label> natively is a stack; clicking its text flips the checkbox inside it, as on the web.
 const labels = new Map<number, { control: number }>();
+/** The label each of a label's other children flips the checkbox of when clicked. */
+const labelledBy = new Map<number, { control: number }>();
 // A vertical NSStackView lets text run through its trailing padding. Perry's max-width
 // slot holds a child inside both paddings, so text and rows in a column go into one.
 const columns = new Set<number>();
@@ -385,15 +387,24 @@ const dialogs = new Set<number>();
 /** Texts in the body font, which a header cell makes bold. */
 const plainTexts = new Set<number>();
 const headerCells = new Set<number>();
-const clickables = new Map<number, (handler: string, state: ControlState) => void>();
+const listening = new Set<number>();
+const clicks = new Map<number, (() => void)[]>();
+
+// Each widgetSetOnClick adds another gesture recognizer to the view, so a widget gets one,
+// shared by its own behaviour, such as a link opening, and a handler.
+function addClick(widget: Widget, callback: () => void): void {
+  const callbacks = clicks.get(widget);
+  if (callbacks) return void callbacks.push(callback);
+  clicks.set(widget, [callback]);
+  widgetSetOnClick(widget, () => clicks.get(widget)!.forEach(call => call()));
+}
 
 // A cell lays its children out in a line, as inline content flows; a header cell centres them.
-function createCell(header: boolean, emit: (handler: string, state: ControlState) => void): Widget {
+function createCell(header: boolean): Widget {
   const line = NativeHStack(0, []);
   const cell = header ? NativeVStack(0, [line]) : line;
   setPadding(cell, TABLE.padding);
   widgetSetWidth(cell, TABLE.width + 2 * TABLE.padding);
-  clickables.set(cell, emit);
   if (header) {
     stackSetAlignment(cell, CENTER_X);
     bodies.set(cell, line);
@@ -468,7 +479,7 @@ function showDisclosure(disclosure: Disclosure): void {
 }
 
 function toggleOnClick(widget: Widget, disclosure: Disclosure): void {
-  widgetSetOnClick(widget, () => {
+  addClick(widget, () => {
     disclosure.open = !disclosure.open;
     showDisclosure(disclosure);
   });
@@ -534,7 +545,7 @@ function setOptionProperty(option: Option, name: string, value: unknown): void {
 function makeLink(text: Widget): void {
   links.set(text, "");
   textSetColor(text, ACCENT.r, ACCENT.g, ACCENT.b, 1);
-  widgetSetOnClick(text, () => {
+  addClick(text, () => {
     const href = links.get(text);
     if (href) openURL(href);
   });
@@ -629,12 +640,8 @@ const driver: NativeDriver = {
         if (tag === "table") setPadding(section, TABLE.spacing);
         return section;
       }
-      case "TableRow": {
-        const row = NativeHStack(TABLE.spacing, []);
-        clickables.set(row, emit);
-        return row;
-      }
-      case "TableCell": return createCell(tag === "th", emit);
+      case "TableRow": return NativeHStack(TABLE.spacing, []);
+      case "TableCell": return createCell(tag === "th");
       case "Details": return createDetails();
       case "Dialog": return createDialog();
       case "Image": {
@@ -783,10 +790,13 @@ const driver: NativeDriver = {
     const label = labels.get(parent);
     if (label) {
       if (controls.has(child)) label.control = child;
-      else widgetSetOnClick(child as Widget, () => {
-        const control = controls.get(label.control);
-        if (control && control.inner !== 0 && control.props.type === "checkbox") toggle(control);
-      });
+      else {
+        if (!labelledBy.has(child)) addClick(child as Widget, () => {
+          const control = controls.get(labelledBy.get(child)?.control ?? 0);
+          if (control && control.inner !== 0 && control.props.type === "checkbox") toggle(control);
+        });
+        labelledBy.set(child, label);
+      }
     }
     if (headerCells.has(parent) && plainTexts.has(child)) textSetFontWeight(child as Widget, BODY, BOLD);
     // AppKit's indexed insertion detaches without destroying retained layout
@@ -820,6 +830,7 @@ const driver: NativeDriver = {
     parent = bodies.get(parent) ?? parent;
     const label = labels.get(parent);
     if (label && label.control === child) label.control = 0;
+    if (label) labelledBy.delete(child);
     unlist(parent, child);
     const disclosure = disclosures.get(parent);
     if (disclosure) {
@@ -834,12 +845,12 @@ const driver: NativeDriver = {
     options.get(child)!.picker = 0;
     schedule(picker);
   },
-  // A row or cell takes clicks only once it has a handler, so a cell without one leaves them to its row.
-  listen(handle, _kind, handler) {
-    const emit = clickables.get(handle);
-    if (!emit || handler !== "onClick") return;
-    clickables.delete(handle);
-    widgetSetOnClick(handle as Widget, () => emit("onClick", { value: "", checked: false }));
+  // An element takes clicks only once it has a handler, so one without a handler leaves them to
+  // the element around it. A button and the controls report their own events.
+  listen(handle, kind, handler, emit) {
+    if (handler !== "onClick" || listening.has(handle) || kind === "Button" || controls.has(handle) || options.has(handle)) return;
+    listening.add(handle);
+    addClick(handle as Widget, () => emit("onClick", { value: "", checked: false }));
   },
   element(kind, handle) {
     if (kind !== "Canvas") return undefined;

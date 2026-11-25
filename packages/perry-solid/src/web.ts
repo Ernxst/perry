@@ -84,6 +84,7 @@ function stack(kind: string, props: StackProps): HTMLElement {
     style.background = color ? `rgba(${color[0] * 255}, ${color[1] * 255}, ${color[2] * 255}, ${color[3]})` : "";
     element.hidden = !!props.hidden;
   });
+  element.addEventListener("click", event => props.onClick?.(event));
   insert(element, () => props.children);
   return element;
 }

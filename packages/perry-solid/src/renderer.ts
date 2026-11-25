@@ -46,8 +46,11 @@ export interface NativeDriver {
    * a DOM element's `children` is read-only.
    */
   element?(kind: ElementName, handle: number): object | undefined;
-  /** Called when an element is given a handler, such as `onClick`, for widgets that fire it only once asked. */
-  listen?(handle: number, kind: ElementName, handler: string): void;
+  /**
+   * Called when an element's widget exists and it has a handler, such as `onClick`, for widgets
+   * that fire it only once asked. `emit` calls the handler, as `create`'s does.
+   */
+  listen?(handle: number, kind: ElementName, handler: string, emit: (handler: string, state: ControlState) => void): void;
 }
 
 /** Retained ordering metadata; native handles themselves have no sibling API. */
@@ -170,6 +173,7 @@ export function createNativeRenderer(driver: NativeDriver) {
       node.materialized = true;
       for (const name of Object.keys(node.props)) {
         if (!name.startsWith("on")) driver.setProperty(node.handle, node.kind as ElementName, name, node.props[name], undefined);
+        else if (node.props[name] != null) driver.listen?.(node.handle, node.kind as ElementName, name, emitter(node));
       }
       refreshText(node);
     }
@@ -309,7 +313,7 @@ export function createNativeRenderer(driver: NativeDriver) {
       node.props[name] = value;
       if (name.startsWith("on")) {
         if (value != null && typeof value !== "function") throw new Error(`${name} must be a function`);
-        if (value != null && node.materialized) driver.listen?.(node.handle, node.kind as ElementName, name);
+        if (value != null && node.materialized) driver.listen?.(node.handle, node.kind as ElementName, name, emitter(node));
       } else if (node.kind === "TableCell" && name === "width") {
         const table = tableOf(node);
         const first = firstRow(table);

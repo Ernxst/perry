@@ -22,18 +22,27 @@ export namespace JSX {
     title?: string;
   }
   /**
+   * Natively the event is only `currentTarget` and `target`, both the element, with no pointer
+   * position or modifier keys. A text element inside another text gets no clicks of its own. Only
+   * the innermost element with a handler gets a click, and while any element around a button or
+   * other control has a handler, clicking the control fires that handler instead.
+   */
+  interface Clickable {
+    onClick?: (event: unknown) => void;
+  }
+  /**
    * Natively one Text widget, or an AttributedText when it holds other text elements. Inside another text,
    * an element keeps its weight, italic, underline, size and colour, but not a monospaced font,
    * strikethrough or background, and an `a` throws.
    */
-  interface TextProps extends Common {
+  interface TextProps extends Common, Clickable {
     children?: Element;
   }
   /** Natively a VStack; on the web a flex column with the stacks' gap. */
-  interface BlockProps extends Common {
+  interface BlockProps extends Common, Clickable {
     children?: Element;
   }
-  interface TablePartProps extends Common {
+  interface TablePartProps extends Common, Clickable {
     children?: Element;
   }
   /**
@@ -43,7 +52,6 @@ export namespace JSX {
    */
   interface CellProps extends TablePartProps {
     width?: number;
-    onClick?: (event: unknown) => void;
   }
   interface ControlProps extends Common {
     disabled?: boolean;
@@ -132,7 +140,7 @@ export namespace JSX {
     /** Holds only `tr`. */
     tfoot: TablePartProps;
     /** Holds only `th` and `td`. */
-    tr: TablePartProps & { onClick?: (event: unknown) => void };
+    tr: TablePartProps;
     /** A header cell: its text is bold and centred. */
     th: CellProps;
     td: CellProps;
@@ -144,7 +152,7 @@ export namespace JSX {
      * `src` is a URL, a `data:` URL, or a path into Vite's `public/` folder, which the native build
      * copies into the app bundle. Give both `width` and `height`: natively an image stretches to fill them.
      */
-    img: Common & { src: string; alt?: string; width?: number; height?: number };
+    img: Common & Clickable & { src: string; alt?: string; width?: number; height?: number };
     /** Natively a bar drawn from stacks; without a `value` it's a spinner. */
     progress: Common & { value?: number; max?: number };
     /** Drawn as `progress` is; `low`, `high` and `optimum` aren't supported. */
@@ -172,6 +180,6 @@ export namespace JSX {
     datalist: { id: string; children?: Element };
     option: { value?: string; children?: string };
     /** Natively a row; clicking its text flips a checkbox inside it. */
-    label: Common & { children?: Element };
+    label: Common & Clickable & { children?: Element };
   }
 }

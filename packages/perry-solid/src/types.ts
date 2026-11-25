@@ -11,4 +11,5 @@ export interface StackProps {
   height?: number;
   opacity?: number;
   hidden?: boolean;
+  onClick?: (event: unknown) => void;
 }
