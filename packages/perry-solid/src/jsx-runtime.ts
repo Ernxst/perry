@@ -16,6 +16,7 @@ export namespace JSX {
    */
   export type ControlEvent = { currentTarget: { value: string; checked: boolean } };
   type Handler = (event: ControlEvent) => void;
+  export type KeyEvent = { key: string; preventDefault(): void };
 
   /**
    * `role`, `tabIndex` and the `aria-*` attributes reach assistive technology on the web; natively
@@ -33,9 +34,13 @@ export namespace JSX {
    * position or modifier keys. A text element inside another text gets no clicks of its own. Only
    * the innermost element with a handler gets a click, and while any element around a button or
    * other control has a handler, clicking the control fires that handler instead.
+   *
+   * `onKeyDown`, with `tabIndex` and `role`, lets a keyboard reach the element on the web. Natively
+   * the element can't take focus, so it never fires.
    */
   interface Clickable {
     onClick?: (event: unknown) => void;
+    onKeyDown?: (event: KeyEvent) => void;
   }
   /**
    * Natively one Text widget, or an AttributedText when it holds other text elements. Inside another text,

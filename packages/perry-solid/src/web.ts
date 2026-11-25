@@ -96,6 +96,7 @@ function stack(kind: string, props: StackProps): HTMLElement {
     setAttribute(element, "tabindex", props.tabIndex);
   });
   element.addEventListener("click", event => props.onClick?.(event));
+  element.addEventListener("keydown", event => props.onKeyDown?.(event));
   insert(element, () => props.children);
   return element;
 }

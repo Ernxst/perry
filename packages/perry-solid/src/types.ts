@@ -16,4 +16,6 @@ export interface StackProps {
   tabIndex?: number;
   [aria: `aria-${string}`]: string | number | boolean | undefined;
   onClick?: (event: unknown) => void;
+  /** Never fires natively, where a stack can't take focus. */
+  onKeyDown?: (event: JSX.KeyEvent) => void;
 }
