@@ -21,7 +21,11 @@ export namespace JSX {
     hidden?: boolean;
     title?: string;
   }
-  /** Natively a single Text widget, so its children must be text, not other elements. */
+  /**
+   * Natively one Text widget, or an AttributedText when it holds other text elements. Inside another text,
+   * an element keeps its weight, italic, underline, size and colour, but not a monospaced font,
+   * strikethrough or background, and an `a` throws.
+   */
   interface TextProps extends Common {
     children?: Element;
   }
@@ -49,9 +53,7 @@ export namespace JSX {
     sup: TextProps;
     strong: TextProps;
     b: TextProps;
-    /** Natively upright: a Perry Text can't be italic. */
     em: TextProps;
-    /** Natively upright: a Perry Text can't be italic. */
     i: TextProps;
     u: TextProps;
     ins: TextProps;

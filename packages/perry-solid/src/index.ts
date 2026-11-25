@@ -2,7 +2,7 @@ import {
   VStack as NativeVStack, HStack as NativeHStack, ZStack as NativeZStack, Spacer as NativeSpacer,
   ScrollView as NativeScrollView, scrollviewSetChild,
   Text, Button, Divider, BloomView, TextField, SecureField, TextArea, Toggle, Slider, Picker, DatePicker,
-  Image, ImageFile, ProgressView,
+  Image, ImageFile, ProgressView, AttributedText, attributedTextAppend, attributedTextClear,
   textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetFontFamily, textSetColor, textSetDecoration,
   textfieldSetString, textareaSetString, toggleSetState, pickerAddItem, pickerSetSelected, datePickerSetDate,
   textfieldSetOnSubmit,
@@ -14,7 +14,7 @@ import {
 } from "perry/ui";
 import { openURL } from "perry/system";
 import { CanvasElement } from "perry-browser";
-import { createNativeRenderer, type ControlState, type NativeDriver, type Props } from "./renderer.ts";
+import { createNativeRenderer, type ControlState, type NativeDriver, type Props, type TextRun } from "./renderer.ts";
 import type { JSX } from "./jsx-runtime.ts";
 import type { StackProps } from "./types.ts";
 export type { NativeNode, Child, Component, Props, ElementName } from "./renderer.ts";
@@ -35,6 +35,8 @@ const MONOSPACED = new Set(["code", "kbd", "samp", "pre"]);
 // textSetDecoration's values: 1 underlines, 2 strikes through.
 const DECORATIONS: Record<string, number> = { a: 1, u: 1, ins: 1, s: 2, del: 2 };
 const MARK = { r: 1, g: 1, b: 0 };
+// A plain Perry Text can't be italic, so these show through AttributedText even alone.
+const ITALIC = new Set(["em", "i", "var", "cite", "dfn", "address"]);
 // AppKit text fields and sliders collapse in a stack unless given a width.
 const WIDTHS: Record<string, number> = { text: 200, password: 200, range: 150, textarea: 200, date: 130 };
 const TEXTAREA_HEIGHT = 60;
@@ -87,6 +89,8 @@ const slotted = new Set<number>();
 // An <a> is text that opens its href when clicked.
 const links = new Map<number, string>();
 const decorations = new Map<number, number>();
+// AttributedText widgets, by the tag of the text element they show.
+const richTexts = new Map<number, string>();
 // A ScrollView's children go into a column inside it, since Perry's scroll view holds one child.
 const scrolls = new Map<number, Widget>();
 
@@ -314,6 +318,45 @@ function setOptionProperty(option: Option, name: string, value: unknown): void {
   if (option.picker !== 0) schedule(controls.get(option.picker)!);
 }
 
+function makeLink(text: Widget): void {
+  links.set(text, "");
+  textSetColor(text, ACCENT.r, ACCENT.g, ACCENT.b, 1);
+  widgetSetOnClick(text, () => {
+    const href = links.get(text);
+    if (href) openURL(href);
+  });
+}
+
+function createRichText(tag: string): Widget {
+  const text = AttributedText();
+  richTexts.set(text, tag);
+  if (tag === "mark") widgetSetBackgroundColor(text, MARK.r, MARK.g, MARK.b, 1);
+  else slotted.add(text);
+  if (tag === "a") makeLink(text);
+  return text;
+}
+
+// A run gets the styles an AttributedText run can carry: weight, italic, underline, size
+// and colour. Monospaced fonts, strikethrough and backgrounds apply only to a whole text.
+function appendRun(text: Widget, run: TextRun): void {
+  let bold = 0, italic = 0, underline = 0, size = 0, color = false;
+  run.tags.forEach((tag, depth) => {
+    if (tag === "a" && depth > 0) throw new Error("<a> inside text is unsupported natively; put it beside the text in an HStack");
+    if (HEADINGS[tag]) { size = HEADINGS[tag]; bold = 1; }
+    if (tag === "strong" || tag === "b") bold = 1;
+    if (ITALIC.has(tag)) italic = 1;
+    if (SMALLER.has(tag)) size = SMALL;
+    if (DECORATIONS[tag] === 1) underline = 1;
+    if (tag === "a") color = true;
+  });
+  attributedTextAppend(text, run.text, bold, italic, underline, size, ACCENT.r, ACCENT.g, ACCENT.b, color ? 1 : 0);
+}
+
+function setRuns(text: Widget, runs: TextRun[]): void {
+  attributedTextClear(text);
+  for (const run of runs) appendRun(text, run);
+}
+
 const driver: NativeDriver = {
   create(kind, tag, emit): number {
     switch (kind) {
@@ -339,7 +382,9 @@ const driver: NativeDriver = {
         scrolls.set(scroll, content);
         return scroll;
       }
+      case "RichText": return createRichText(tag);
       case "Text": {
+        if (ITALIC.has(tag)) return createRichText(tag);
         const text = Text("");
         // In the slot, text is as wide as its column, which would stretch a mark's background.
         if (tag !== "mark") slotted.add(text);
@@ -349,14 +394,7 @@ const driver: NativeDriver = {
         else if (MONOSPACED.has(tag)) textSetFontFamily(text, "monospaced");
         else if (tag === "mark") widgetSetBackgroundColor(text, MARK.r, MARK.g, MARK.b, 1);
         if (DECORATIONS[tag]) decorations.set(text, DECORATIONS[tag]);
-        if (tag === "a") {
-          links.set(text, "");
-          textSetColor(text, ACCENT.r, ACCENT.g, ACCENT.b, 1);
-          widgetSetOnClick(text, () => {
-            const href = links.get(text);
-            if (href) openURL(href);
-          });
-        }
+        if (tag === "a") makeLink(text);
         return text;
       }
       case "Image": {
@@ -399,8 +437,15 @@ const driver: NativeDriver = {
     if (bar && setBarProperty(bar, name, value)) return;
     const widget = handle as Widget;
     switch (name) {
+      case "runs":
+        if (!richTexts.has(handle)) throw new Error(`runs is unsupported on ${kind}`);
+        setRuns(widget, value as TextRun[]);
+        return;
       case "text":
-        if (kind === "Text") {
+        if (richTexts.has(handle)) {
+          setRuns(widget, [{ text: value == null ? "" : String(value), tags: [richTexts.get(handle)!] }]);
+        }
+        else if (kind === "Text") {
           textSetString(widget, value == null ? "" : String(value));
           // Setting the string drops the decoration.
           const decoration = decorations.get(handle);
