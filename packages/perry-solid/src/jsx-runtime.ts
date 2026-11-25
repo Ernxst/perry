@@ -106,6 +106,11 @@ export namespace JSX {
      */
     details: BlockProps & { open?: boolean };
     summary: TextProps;
+    /**
+     * A box shown in place while `open`, on both platforms; it doesn't float above the page or
+     * window. `showModal()` is web-only.
+     */
+    dialog: BlockProps & { open?: boolean };
     /** Natively underlined text that opens `href` with the system when clicked; `target` has no effect there. */
     a: TextProps & { href?: string; target?: string };
     button: Common & { children?: Element; disabled?: boolean; type?: "submit" | "button"; onClick?: () => void };

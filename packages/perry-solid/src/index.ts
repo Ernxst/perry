@@ -52,6 +52,8 @@ const ROW_HEIGHT = 22;
 const CELL_PADDING = 6;
 // The web's default iframe size.
 const FRAME = { width: 300, height: 150 };
+// A <dialog>'s box, matching the web stylesheet's.
+const DIALOG = { padding: 16, radius: 10 };
 // A list item's marker sits in this width, as the web's list padding holds its marker.
 const MARKER_WIDTH = 14;
 const LIST_GAP = 4;
@@ -394,6 +396,7 @@ interface Grid {
   height: number;
 }
 const grids = new Map<number, Grid>();
+const dialogs = new Set<number>();
 
 function createGrid(): Grid {
   const wrapper = NativeVStack(0, []);
@@ -575,6 +578,22 @@ function createDetails(): Widget {
   return details;
 }
 
+// A <dialog> shows in place, as a box that's there only while it's open. Perry's sheets
+// can't be dismissed and its extra windows don't appear, so it can't float above the window.
+function createDialog(): Widget {
+  const dialog = NativeVStack(8, []);
+  setPadding(dialog, DIALOG.padding);
+  setCornerRadius(dialog, DIALOG.radius);
+  widgetSetBackgroundColor(dialog, 1, 1, 1, 1);
+  widgetSetBorderWidth(dialog, 1);
+  widgetSetBorderColor(dialog, 0, 0, 0, FIELDSET.alpha);
+  widgetSetHidden(dialog, 1);
+  columns.add(dialog);
+  slotted.add(dialog);
+  dialogs.add(dialog);
+  return dialog;
+}
+
 function unlist(parent: number, child: number): void {
   const list = lists.get(parent);
   if (!list || !list.items.includes(child)) return;
@@ -687,6 +706,7 @@ const driver: NativeDriver = {
         return text;
       }
       case "Details": return createDetails();
+      case "Dialog": return createDialog();
       case "Image": {
         const wrapper = NativeHStack(0, []);
         images.set(wrapper, { wrapper, inner: 0, src: "", alt: "", width: undefined, height: undefined });
@@ -744,6 +764,7 @@ const driver: NativeDriver = {
     if (grid && setGridProperty(grid, name, value)) return;
     const frame = frames.get(handle);
     if (frame && setFrameProperty(frame, name, value)) return;
+    if (dialogs.has(handle) && name === "open") return widgetSetHidden(handle as Widget, value ? 0 : 1);
     const disclosure = disclosures.get(handle);
     if (disclosure && name === "open") {
       disclosure.open = !!value;
