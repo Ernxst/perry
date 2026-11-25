@@ -5,7 +5,7 @@ import {
   Image, ImageFile, ProgressView, AttributedText, attributedTextAppend, attributedTextClear,
   textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetFontFamily, textSetColor, textSetDecoration,
   textfieldSetString, textareaSetString, toggleSetState, pickerAddItem, pickerSetSelected, datePickerSetDate,
-  textfieldSetOnSubmit, WebView, webviewLoadUrl,
+  textfieldSetOnSubmit, WebView, webviewLoadUrl, Combobox, comboboxAddItem, comboboxSetValue,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
@@ -40,7 +40,7 @@ const MARK = { r: 1, g: 1, b: 0 };
 const ITALIC = new Set(["em", "i", "var", "cite", "dfn", "address"]);
 // AppKit text fields and sliders collapse in a stack unless given a width.
 const WIDTHS: Record<string, number> = {
-  text: 200, password: 200, search: 200, email: 200, url: 200, tel: 200, number: 200, range: 150, textarea: 200, date: 130,
+  text: 200, password: 200, combobox: 200, search: 200, email: 200, url: 200, tel: 200, number: 200, range: 150, textarea: 200, date: 130,
 };
 const TEXTAREA_HEIGHT = 60;
 const PROGRESS_WIDTH = 150;
@@ -68,9 +68,10 @@ function numeric(value: unknown, fallback: number): number {
 // <input>, <textarea> and <select> are a native stack holding the real control. Solid
 // sets an element's props only after inserting it, and some props pick the control (an
 // input's type) or are fixed when it's made (placeholder, min, max, a select's options),
-// so the control is built, and rebuilt, a microtask after those props change.
+// so the control is built, and rebuilt, a microtask after those props change. A <datalist>
+// has no control of its own: building it rebuilds the inputs whose list names its id.
 interface Control {
-  kind: "Input" | "TextArea" | "Picker";
+  kind: "Input" | "TextArea" | "Picker" | "Datalist";
   wrapper: Widget;
   inner: Widget | 0;
   props: Record<string, unknown>;
@@ -147,14 +148,16 @@ interface Bar {
 const bars = new Map<number, Bar>();
 
 const REBUILDS: Record<Control["kind"], string[]> = {
-  Input: ["type", "placeholder", "min", "max"],
+  Input: ["type", "placeholder", "min", "max", "list"],
   TextArea: ["placeholder"],
   Picker: [],
+  Datalist: ["id"],
 };
 const CONTROL_PROPS: Record<Control["kind"], string[]> = {
-  Input: ["type", "placeholder", "min", "max", "step", "value", "checked", "disabled", "title", "hidden"],
+  Input: ["type", "placeholder", "min", "max", "step", "value", "checked", "disabled", "title", "hidden", "list"],
   TextArea: ["placeholder", "value", "disabled", "title", "hidden"],
   Picker: ["value", "disabled", "title", "hidden"],
+  Datalist: ["id"],
 };
 
 function report(control: Control, state: ControlState): void {
@@ -173,8 +176,27 @@ function optionValue(option: Option): string {
   return option.value ?? option.label;
 }
 
+function findDatalist(id: unknown): Control | undefined {
+  for (const control of controls.values()) {
+    if (control.kind === "Datalist" && control.props.id === id) return control;
+  }
+  return undefined;
+}
+
+// Perry's combobox takes no placeholder, so an input with a list shows none natively.
+function createCombobox(control: Control): Widget {
+  const combobox = Combobox("", value => {
+    control.shown = value;
+    report(control, { value, checked: false });
+  });
+  const datalist = findDatalist(control.props.list);
+  for (const handle of datalist?.options ?? []) comboboxAddItem(combobox, optionValue(options.get(handle)!));
+  return combobox;
+}
+
 function createControl(control: Control): Widget {
   const props = control.props;
+  if (control.kind === "Input" && props.list != null && (props.type ?? "text") !== "password") return createCombobox(control);
   if (control.kind === "Picker") {
     const picker = Picker(index => {
       const option = options.get(control.options[index]);
@@ -230,7 +252,8 @@ function createControl(control: Control): Widget {
 function applyControl(control: Control): void {
   const inner = control.inner as Widget;
   const props = control.props;
-  const type = control.kind === "Input" ? String(props.type ?? "text") : control.kind.toLowerCase();
+  const type = control.kind !== "Input" ? control.kind.toLowerCase()
+    : props.list != null && props.type !== "password" ? "combobox" : String(props.type ?? "text");
   if (type === "checkbox") {
     toggleSetState(inner, props.checked ? 1 : 0);
   } else if (type === "picker") {
@@ -246,6 +269,7 @@ function applyControl(control: Control): void {
     // Perry's slider has no value setter, so a range input starts at min and only reports.
     control.shown = String(props.value);
     if (type === "textarea") textareaSetString(inner, control.shown);
+    else if (type === "combobox") comboboxSetValue(inner, control.shown);
     else textfieldSetString(inner, control.shown);
   }
   if (props.disabled != null) {
@@ -261,6 +285,12 @@ function applyControl(control: Control): void {
 
 function build(control: Control): void {
   control.scheduled = false;
+  if (control.kind === "Datalist") {
+    for (const input of controls.values()) {
+      if (input.kind === "Input" && input.props.list != null && input.props.list === control.props.id) schedule(input);
+    }
+    return;
+  }
   const previous = control.inner;
   control.inner = createControl(control);
   // The new control starts empty, so applyControl must set the value again.
@@ -577,8 +607,10 @@ const driver: NativeDriver = {
       }
       case "Input":
       case "TextArea":
-      case "Picker": {
+      case "Picker":
+      case "Datalist": {
         const wrapper = NativeHStack(0, []);
+        if (kind === "Datalist") widgetSetHidden(wrapper, 1);
         controls.set(wrapper, { kind, wrapper, inner: 0, props: {}, options: [], shown: "", scheduled: false, emit });
         schedule(controls.get(wrapper)!);
         return wrapper;

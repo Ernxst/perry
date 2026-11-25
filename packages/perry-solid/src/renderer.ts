@@ -4,7 +4,7 @@ import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Acce
 
 export type ElementName =
   | "VStack" | "HStack" | "ZStack" | "Spacer" | "ScrollView"
-  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Details" | "Frame" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
+  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Details" | "Frame" | "Datalist" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
 
 /** What a native control reports to the `onInput` and `onChange` handlers, as `event.currentTarget`. */
 export interface ControlState {
@@ -79,11 +79,11 @@ const kinds: Record<string, ElementName> = {
   article: "VStack", aside: "VStack", figure: "VStack", search: "VStack", menu: "VStack", form: "VStack", fieldset: "VStack",
   ul: "VStack", ol: "VStack", li: "ListItem", details: "Details", summary: "Text",
   button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress", meter: "Progress", output: "Text", iframe: "Frame",
-  input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label",
+  input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label", datalist: "Datalist",
 };
 
 function isContainer(node: NativeNode): boolean {
-  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "ScrollView" || node.kind === "Picker" || node.kind === "Label" || node.kind === "ListItem" || node.kind === "Details" || node.kind === "#root";
+  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "ScrollView" || node.kind === "Picker" || node.kind === "Datalist" || node.kind === "Label" || node.kind === "ListItem" || node.kind === "Details" || node.kind === "#root";
 }
 
 export function createNativeRenderer(driver: NativeDriver) {
@@ -207,8 +207,8 @@ export function createNativeRenderer(driver: NativeDriver) {
       }
     } else if (!isContainer(parent)) {
       throw new Error(`${parent.kind} cannot contain children`);
-    } else if ((parent.kind === "Picker") !== (node.kind === "Option")) {
-      throw new Error("<option> goes in <select>, and <select> holds only <option>");
+    } else if ((parent.kind === "Picker" || parent.kind === "Datalist") !== (node.kind === "Option")) {
+      throw new Error("<option> goes in <select> or <datalist>, and they hold only <option>");
     } else if ((parent.tag === "ul" || parent.tag === "ol") && node.kind !== "ListItem") {
       throw new Error(`<${parent.tag}> holds only <li>`);
     }

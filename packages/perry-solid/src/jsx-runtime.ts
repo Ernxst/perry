@@ -134,9 +134,12 @@ export namespace JSX {
       min?: number;
       max?: number;
       step?: number;
+      /** A `datalist`'s id. Natively the input is then a combobox, which shows no placeholder. */
+      list?: string;
     };
     textarea: ControlProps & { value?: string; placeholder?: string };
     select: ControlProps & { value?: string; children?: Element };
+    datalist: { id: string; children?: Element };
     option: { value?: string; children?: string };
     /** Natively a row; clicking its text flips a checkbox inside it. */
     label: Common & { children?: Element };
