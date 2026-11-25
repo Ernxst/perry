@@ -1,5 +1,5 @@
 import {
-  VStack, HStack, Text, Button, Spacer, Divider,
+  VStack, HStack, ZStack, Text, Button, Spacer, Divider, BloomView,
   textSetString, buttonSetTitle, textSetFontSize,
   widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
@@ -25,10 +25,12 @@ const driver: NativeDriver = {
     switch (kind) {
       case "VStack": return VStack(8, []);
       case "HStack": return HStack(8, []);
+      case "ZStack": return ZStack();
       case "Text": return Text("");
       case "Button": return Button("", onPress);
       case "Spacer": return Spacer();
       case "Divider": return Divider();
+      case "BloomView": return BloomView(0, 0);
     }
   },
   setProperty(handle, kind, name, value) {

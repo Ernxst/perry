@@ -1,7 +1,7 @@
 import { createRenderer } from "solid-js/universal";
 import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Accessor } from "solid-js";
 
-export type ElementName = "VStack" | "HStack" | "Text" | "Button" | "Spacer" | "Divider";
+export type ElementName = "VStack" | "HStack" | "ZStack" | "Text" | "Button" | "Spacer" | "Divider" | "BloomView";
 export type Props = Record<string, unknown>;
 export type Child = NativeNode | string | number | boolean | null | undefined | Child[] | (() => Child);
 export type Component<P = Props> = (props: P) => Child;
@@ -38,7 +38,7 @@ function isLabel(node: NativeNode): boolean {
 }
 
 function isContainer(node: NativeNode): boolean {
-  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "#root";
+  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "#root";
 }
 
 export function createNativeRenderer(driver: NativeDriver) {
@@ -51,12 +51,14 @@ export function createNativeRenderer(driver: NativeDriver) {
     switch (name) {
       case "vstack": name = "VStack"; break;
       case "hstack": name = "HStack"; break;
+      case "zstack": name = "ZStack"; break;
       case "text": name = "Text"; break;
       case "button": name = "Button"; break;
       case "spacer": name = "Spacer"; break;
       case "divider": name = "Divider"; break;
+      case "bloomview": name = "BloomView"; break;
     }
-    if (!["VStack", "HStack", "Text", "Button", "Spacer", "Divider"].includes(name)) {
+    if (!["VStack", "HStack", "ZStack", "Text", "Button", "Spacer", "Divider", "BloomView"].includes(name)) {
       throw new Error(`Unsupported Perry Solid element: ${name}`);
     }
     const node = makeNode(name as ElementName);

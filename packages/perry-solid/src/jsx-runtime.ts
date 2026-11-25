@@ -24,9 +24,11 @@ export namespace JSX {
   export interface IntrinsicElements {
     vstack: NativeProps;
     hstack: NativeProps;
+    zstack: NativeProps;
     text: NativeProps;
     button: NativeProps;
     spacer: NativeProps;
     divider: NativeProps;
+    bloomview: NativeProps;
   }
 }
