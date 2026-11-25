@@ -9,7 +9,7 @@ import {
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
-  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetHugging, stackSetAlignment,
+  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor,
   type Widget,
 } from "perry/ui";
@@ -106,6 +106,28 @@ const labelledBy = new Map<number, { control: number }>();
 // A vertical NSStackView lets text run through its trailing padding. Perry's max-width
 // slot holds a child inside both paddings, so text and rows in a column go into one.
 const columns = new Set<number>();
+// AppKit stretches a column's children to fill its height, where a flexbox column leaves the
+// space empty. Gravity areas leave it empty too, but a Spacer only grows under fill, so a column
+// fills while it holds one.
+const GRAVITY_AREAS = -1;
+const FILL = 0;
+const spacers = new Set<number>();
+const spacersIn = new Map<number, number>();
+
+function makeColumn(spacing: number): Widget {
+  const column = NativeVStack(spacing, []);
+  stackSetDistribution(column, GRAVITY_AREAS);
+  columns.add(column);
+  return column;
+}
+
+function countSpacer(column: number, child: number, change: 1 | -1): void {
+  if (!columns.has(column) || !spacers.has(child)) return;
+  const count = (spacersIn.get(column) ?? 0) + change;
+  spacersIn.set(column, count);
+  stackSetDistribution(column as Widget, count > 0 ? FILL : GRAVITY_AREAS);
+}
+
 const slotted = new Set<number>();
 // An <a> is text that opens its href when clicked.
 const links = new Map<number, string>();
@@ -587,8 +609,7 @@ const driver: NativeDriver = {
     switch (kind) {
       case "VStack": {
         const list = tag === "ul" || tag === "ol";
-        const column = NativeVStack(list ? LIST_GAP : 8, []);
-        columns.add(column);
+        const column = makeColumn(list ? LIST_GAP : 8);
         if (list) lists.set(column, { ordered: tag === "ol", items: [] });
         if (tag === "fieldset") {
           setPadding(column, FIELDSET.padding);
@@ -608,11 +629,14 @@ const driver: NativeDriver = {
         return row;
       }
       case "ZStack": return NativeZStack();
-      case "Spacer": return NativeSpacer();
+      case "Spacer": {
+        const spacer = NativeSpacer();
+        spacers.add(spacer);
+        return spacer;
+      }
       case "ScrollView": {
         const scroll = NativeScrollView();
-        const content = NativeVStack(8, []);
-        columns.add(content);
+        const content = makeColumn(8);
         scrollviewSetChild(scroll, content);
         bodies.set(scroll, content);
         return scroll;
@@ -768,7 +792,10 @@ const driver: NativeDriver = {
       schedule(picker);
       return;
     }
-    if (previousParent !== null) unlist(previousParent, child);
+    if (previousParent !== null) {
+      unlist(previousParent, child);
+      countSpacer(previousParent, child, -1);
+    }
     const disclosure = disclosures.get(parent);
     if (disclosure) {
       if (previousParent !== null && __platform__ !== 0) widgetRemoveChild(previousParent as Widget, child as Widget);
@@ -806,6 +833,7 @@ const driver: NativeDriver = {
     }
     widgetAddChildAt(parent as Widget, child as Widget, index);
     if (columns.has(parent) && slotted.has(child)) widgetSetMaxWidth(child as Widget, 1e6);
+    countSpacer(parent, child, 1);
   },
   move(parent, from, to) {
     parent = bodies.get(parent) ?? parent;
@@ -832,6 +860,7 @@ const driver: NativeDriver = {
     if (label && label.control === child) label.control = 0;
     if (label) labelledBy.delete(child);
     unlist(parent, child);
+    countSpacer(parent, child, -1);
     const disclosure = disclosures.get(parent);
     if (disclosure) {
       if (child !== disclosure.summary) return widgetRemoveChild(disclosure.body, child as Widget);
