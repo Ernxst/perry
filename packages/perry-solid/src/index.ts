@@ -50,6 +50,9 @@ const SPINNER_SIZE = 16;
 const FRAME = { width: 300, height: 150 };
 // A <dialog>'s box, matching the web stylesheet's.
 const DIALOG = { padding: 16, radius: 10 };
+// A browser's default spacing between table cells and padding inside them, and the width a
+// column takes when the first row gives none.
+const TABLE = { spacing: 2, padding: 1, width: 100 };
 // A list item's marker sits in this width, as the web's list padding holds its marker.
 const MARKER_WIDTH = 14;
 const LIST_GAP = 4;
@@ -57,6 +60,7 @@ const LIST_GAP = 4;
 const FIELDSET = { padding: 12, radius: 6, alpha: 0.2 };
 // stackSetAlignment takes NSLayoutAttribute values.
 const TOP = 3;
+const CENTER_X = 9;
 // The web build's link and progress colour, rgb(0, 104, 218), and its progress track.
 const ACCENT = { r: 0, g: 0.41, b: 0.85 };
 const TRACK_ALPHA = 0.12;
@@ -378,6 +382,27 @@ function setFrameProperty(frame: Frame, name: string, value: unknown): boolean {
 }
 
 const dialogs = new Set<number>();
+/** Texts in the body font, which a header cell makes bold. */
+const plainTexts = new Set<number>();
+const headerCells = new Set<number>();
+const clickables = new Map<number, (handler: string, state: ControlState) => void>();
+
+// A cell lays its children out in a line, as inline content flows; a header cell centres them.
+function createCell(header: boolean, emit: (handler: string, state: ControlState) => void): Widget {
+  const line = NativeHStack(0, []);
+  const cell = header ? NativeVStack(0, [line]) : line;
+  setPadding(cell, TABLE.padding);
+  widgetSetWidth(cell, TABLE.width + 2 * TABLE.padding);
+  clickables.set(cell, emit);
+  if (header) {
+    stackSetAlignment(cell, CENTER_X);
+    bodies.set(cell, line);
+    headerCells.add(line);
+  } else {
+    widgetAddChild(cell, NativeSpacer());
+  }
+  return cell;
+}
 
 function showBar(bar: Bar): void {
   const indeterminate = bar.value == null && !bar.meter;
@@ -587,6 +612,7 @@ const driver: NativeDriver = {
         const text = Text("");
         // In the slot, text is as wide as its column, which would stretch a mark's background.
         if (tag !== "mark") slotted.add(text);
+        if (tag === "span") plainTexts.add(text);
         if (HEADINGS[tag]) textSetFontWeight(text, HEADINGS[tag], SEMIBOLD);
         else if (tag === "strong" || tag === "b") textSetFontWeight(text, BODY, BOLD);
         else if (tag === "legend") textSetFontWeight(text, BODY, SEMIBOLD);
@@ -598,6 +624,17 @@ const driver: NativeDriver = {
         if (tag === "summary") summaries.add(text);
         return text;
       }
+      case "TableSection": {
+        const section = NativeVStack(TABLE.spacing, []);
+        if (tag === "table") setPadding(section, TABLE.spacing);
+        return section;
+      }
+      case "TableRow": {
+        const row = NativeHStack(TABLE.spacing, []);
+        clickables.set(row, emit);
+        return row;
+      }
+      case "TableCell": return createCell(tag === "th", emit);
       case "Details": return createDetails();
       case "Dialog": return createDialog();
       case "Image": {
@@ -649,6 +686,9 @@ const driver: NativeDriver = {
     if (bar && setBarProperty(bar, name, value)) return;
     const frame = frames.get(handle);
     if (frame && setFrameProperty(frame, name, value)) return;
+    if (kind === "TableCell" && name === "width") {
+      return widgetSetWidth(handle as Widget, numeric(value, TABLE.width) + 2 * TABLE.padding);
+    }
     if (dialogs.has(handle) && name === "open") return widgetSetHidden(handle as Widget, value ? 0 : 1);
     const disclosure = disclosures.get(handle);
     if (disclosure && name === "open") {
@@ -748,6 +788,7 @@ const driver: NativeDriver = {
         if (control && control.inner !== 0 && control.props.type === "checkbox") toggle(control);
       });
     }
+    if (headerCells.has(parent) && plainTexts.has(child)) textSetFontWeight(child as Widget, BODY, BOLD);
     // AppKit's indexed insertion detaches without destroying retained layout
     // metadata. Other backends need the old parent explicitly cleared first.
     if (previousParent !== null && __platform__ !== 0) {
@@ -792,6 +833,13 @@ const driver: NativeDriver = {
     picker.options.splice(picker.options.indexOf(child), 1);
     options.get(child)!.picker = 0;
     schedule(picker);
+  },
+  // A row or cell takes clicks only once it has a handler, so a cell without one leaves them to its row.
+  listen(handle, _kind, handler) {
+    const emit = clickables.get(handle);
+    if (!emit || handler !== "onClick") return;
+    clickables.delete(handle);
+    widgetSetOnClick(handle as Widget, () => emit("onClick", { value: "", checked: false }));
   },
   element(kind, handle) {
     if (kind !== "Canvas") return undefined;

@@ -4,7 +4,7 @@ import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Acce
 
 export type ElementName =
   | "VStack" | "HStack" | "ZStack" | "Spacer" | "ScrollView"
-  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Details" | "Dialog" | "Frame" | "Datalist" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
+  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Details" | "Dialog" | "Frame" | "Datalist" | "TableSection" | "TableRow" | "TableCell" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
 
 /** What a native control reports to the `onInput` and `onChange` handlers, as `event.currentTarget`. */
 export interface ControlState {
@@ -46,6 +46,8 @@ export interface NativeDriver {
    * a DOM element's `children` is read-only.
    */
   element?(kind: ElementName, handle: number): object | undefined;
+  /** Called when an element is given a handler, such as `onClick`, for widgets that fire it only once asked. */
+  listen?(handle: number, kind: ElementName, handler: string): void;
 }
 
 /** Retained ordering metadata; native handles themselves have no sibling API. */
@@ -78,12 +80,40 @@ const kinds: Record<string, ElementName> = {
   div: "VStack", main: "VStack", header: "VStack", footer: "VStack", nav: "VStack", section: "VStack",
   article: "VStack", aside: "VStack", figure: "VStack", search: "VStack", menu: "VStack", form: "VStack", fieldset: "VStack",
   ul: "VStack", ol: "VStack", li: "ListItem", details: "Details", summary: "Text", dialog: "Dialog",
+  table: "TableSection", thead: "TableSection", tbody: "TableSection", tfoot: "TableSection", tr: "TableRow", th: "TableCell", td: "TableCell",
   button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress", meter: "Progress", output: "Text", iframe: "Frame",
   input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label", datalist: "Datalist",
 };
 
 function isContainer(node: NativeNode): boolean {
-  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "ScrollView" || node.kind === "Picker" || node.kind === "Datalist" || node.kind === "Label" || node.kind === "ListItem" || node.kind === "Details" || node.kind === "Dialog" || node.kind === "#root";
+  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "ScrollView" || node.kind === "Picker" || node.kind === "Datalist" || node.kind === "Label" || node.kind === "ListItem" || node.kind === "Details" || node.kind === "Dialog" || isTablePart(node) || node.kind === "#root";
+}
+
+function isTablePart(node: NativeNode): boolean {
+  return node.kind === "TableSection" || node.kind === "TableRow" || node.kind === "TableCell";
+}
+
+// The nesting the HTML parser would produce; anything else it would move out of the table.
+function tableNestingError(parent: NativeNode, node: NativeNode): string | undefined {
+  const group = node.kind === "TableSection" && node.tag !== "table";
+  if (parent.tag === "table") return node.kind === "TableRow" || group ? undefined : "<table> holds only <thead>, <tbody>, <tfoot> and <tr>";
+  if (parent.kind === "TableSection") return node.kind === "TableRow" ? undefined : `<${parent.tag}> holds only <tr>`;
+  if (parent.kind === "TableRow") return node.kind === "TableCell" ? undefined : "<tr> holds only <th> and <td>";
+  if (group) return `<${node.tag}> goes in <table>`;
+  if (node.kind === "TableRow") return "<tr> goes in <table>, <thead>, <tbody> or <tfoot>";
+  if (node.kind === "TableCell") return `<${node.tag}> goes in <tr>`;
+}
+
+function tableOf(node: NativeNode | null): NativeNode | null {
+  while (node && node.tag !== "table") node = node.parent && isTablePart(node.parent) ? node.parent : null;
+  return node;
+}
+
+function firstRow(table: NativeNode | null): NativeNode | undefined {
+  for (const child of table?.nodes ?? []) {
+    if (child.kind === "TableRow") return child;
+    if (child.nodes.length) return child.nodes[0];
+  }
 }
 
 export function createNativeRenderer(driver: NativeDriver) {
@@ -189,13 +219,34 @@ export function createNativeRenderer(driver: NativeDriver) {
     else driver.setProperty(root.handle, root.kind as ElementName, "text", labelText(root), undefined);
   }
 
+  // Each column is as wide as the `width` of its cell in the table's first row, as in a table
+  // with fixed layout, since native widgets can't be measured to fit their content.
+  function sizeCells(node: NativeNode, first: NativeNode | undefined): void {
+    if (node.kind !== "TableCell") return node.nodes.forEach(child => sizeCells(child, first));
+    const column = node.parent!.nodes.indexOf(node);
+    driver.setProperty(node.handle, "TableCell", "width", first?.nodes[column]?.props.width, undefined);
+  }
+
+  // Sizes the cells a change to `parent` may have moved into other columns, or all of them
+  // when it changes the first row.
+  function resizeTable(parent: NativeNode, node: NativeNode, before: NativeNode | undefined): void {
+    const table = tableOf(parent);
+    if (!table) return;
+    const after = firstRow(table);
+    if (after !== before || parent === after) sizeCells(table, after);
+    else if (node.kind === "TableCell") sizeCells(parent, after);
+    else if (node.parent === parent) sizeCells(node, after);
+  }
+
   function removeNode(parent: NativeNode, node: NativeNode): void {
     if (node.parent !== parent) return;
+    const before = isTablePart(parent) ? firstRow(tableOf(parent)) : undefined;
     const index = parent.nodes.indexOf(node);
     parent.nodes.splice(index, 1);
     node.parent = null;
     if (isLabel(parent)) refreshLabel(parent);
     else driver.remove(parent.handle, materialize(node));
+    if (isTablePart(parent)) resizeTable(parent, node, before);
   }
 
   function insertNode(parent: NativeNode, node: NativeNode, anchor?: NativeNode): void {
@@ -212,9 +263,12 @@ export function createNativeRenderer(driver: NativeDriver) {
     } else if ((parent.tag === "ul" || parent.tag === "ol") && node.kind !== "ListItem") {
       throw new Error(`<${parent.tag}> holds only <li>`);
     }
+    const nesting = tableNestingError(parent, node);
+    if (nesting) throw new Error(nesting);
     for (let ancestor: NativeNode | null = parent; ancestor; ancestor = ancestor.parent) {
       if (ancestor === node) throw new Error("Cannot insert a node into its own subtree");
     }
+    const before = isTablePart(parent) ? firstRow(tableOf(parent)) : undefined;
     const previousParent = node.parent;
     const previousIndex = previousParent ? previousParent.nodes.indexOf(node) : -1;
     if (previousParent) previousParent.nodes.splice(previousIndex, 1);
@@ -239,6 +293,7 @@ export function createNativeRenderer(driver: NativeDriver) {
       const oldHandle = previousParent && !isLabel(previousParent) ? previousParent.handle : null;
       driver.insert(parent.handle, materialize(node), index, oldHandle);
     }
+    if (isTablePart(parent)) resizeTable(parent, node, before);
   }
 
   const renderer = createRenderer<NativeNode>({
@@ -251,12 +306,17 @@ export function createNativeRenderer(driver: NativeDriver) {
       if (node.parent && isLabel(node.parent)) refreshLabel(node.parent);
     },
     setProperty(node, name, value, previous) {
+      node.props[name] = value;
       if (name.startsWith("on")) {
         if (value != null && typeof value !== "function") throw new Error(`${name} must be a function`);
+        if (value != null && node.materialized) driver.listen?.(node.handle, node.kind as ElementName, name);
+      } else if (node.kind === "TableCell" && name === "width") {
+        const table = tableOf(node);
+        const first = firstRow(table);
+        if (table && first === node.parent) sizeCells(table, first);
       } else if (node.materialized) {
         driver.setProperty(node.handle, node.kind as ElementName, name, value, previous);
       }
-      node.props[name] = value;
       if (!node.materialized && name === "hidden" && node.parent && isText(node.parent)) refreshLabel(node.parent);
     },
     insertNode,

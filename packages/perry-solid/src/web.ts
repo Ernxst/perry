@@ -52,6 +52,7 @@ progress::-webkit-progress-bar, meter::-webkit-meter-bar { background: transpare
 progress::-webkit-progress-value, meter::-webkit-meter-optimum-value { background: rgb(0, 104, 218); }
 progress::-moz-progress-bar, meter::-moz-meter-bar { background: rgb(0, 104, 218); }
 hr { align-self: stretch; margin: 0; border: 0; border-top: 1px solid #0002; }
+table { align-self: flex-start; table-layout: fixed; width: max-content; }
 label { display: flex; align-items: center; gap: 8px; align-self: flex-start; }
 input, textarea, select { font: inherit; align-self: flex-start; }
 input:is(:not([type]), [type=text], [type=password], [type=search], [type=email], [type=url], [type=tel], [type=number]), textarea {

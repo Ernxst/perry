@@ -33,6 +33,18 @@ export namespace JSX {
   interface BlockProps extends Common {
     children?: Element;
   }
+  interface TablePartProps extends Common {
+    children?: Element;
+  }
+  /**
+   * Natively a cell lays its children out in a line. Each column is as wide as the `width` of its cell
+   * in the table's first row, or 100 pixels; on the web the table uses fixed layout to match, so
+   * `width` on any other row's cells has no effect.
+   */
+  interface CellProps extends TablePartProps {
+    width?: number;
+    onClick?: (event: unknown) => void;
+  }
   interface ControlProps extends Common {
     disabled?: boolean;
     onInput?: Handler;
@@ -111,6 +123,19 @@ export namespace JSX {
      * window. `showModal()` is web-only.
      */
     dialog: BlockProps & { open?: boolean };
+    /** Holds `thead`, `tbody`, `tfoot` and `tr`; natively a `thead` or `tfoot` stays where it's written. */
+    table: TablePartProps;
+    /** Holds only `tr`. */
+    thead: TablePartProps;
+    /** Holds only `tr`. */
+    tbody: TablePartProps;
+    /** Holds only `tr`. */
+    tfoot: TablePartProps;
+    /** Holds only `th` and `td`. */
+    tr: TablePartProps & { onClick?: (event: unknown) => void };
+    /** A header cell: its text is bold and centred. */
+    th: CellProps;
+    td: CellProps;
     /** Natively underlined text that opens `href` with the system when clicked; `target` has no effect there. */
     a: TextProps & { href?: string; target?: string };
     button: Common & { children?: Element; disabled?: boolean; type?: "submit" | "button"; onClick?: () => void };
