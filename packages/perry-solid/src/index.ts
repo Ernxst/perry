@@ -579,8 +579,8 @@ function createDetails(): Widget {
 }
 
 // A <dialog> is a placeholder holding its box, shown in place while it's open. showModal()
-// moves the box into a layer over the whole window, since Perry's sheets can't be dismissed and
-// its extra windows don't appear; the placeholder keeps the dialog's place among its siblings.
+// moves the box into a layer over the whole window, as a browser draws it over the page, since
+// Perry's sheets can't be dismissed; the placeholder keeps the dialog's place among its siblings.
 function createDialog(emit: Dialog["emit"]): Widget {
   const box = makeColumn(8);
   setPadding(box, DIALOG.padding);
