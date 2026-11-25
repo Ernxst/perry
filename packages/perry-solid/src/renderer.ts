@@ -4,7 +4,7 @@ import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Acce
 
 export type ElementName =
   | "VStack" | "HStack" | "ZStack" | "Spacer" | "ScrollView"
-  | "Image" | "Progress" | "Text" | "RichText" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
+  | "Image" | "Progress" | "Text" | "RichText" | "ListItem" | "Button" | "Divider" | "Canvas" | "Input" | "TextArea" | "Picker" | "Option" | "Label";
 
 /** What a native control reports to the `onInput` and `onChange` handlers, as `event.currentTarget`. */
 export interface ControlState {
@@ -77,12 +77,13 @@ const kinds: Record<string, ElementName> = {
   abbr: "Text", cite: "Text", dfn: "Text", time: "Text", address: "Text", figcaption: "Text",
   div: "VStack", main: "VStack", header: "VStack", footer: "VStack", nav: "VStack", section: "VStack",
   article: "VStack", aside: "VStack", figure: "VStack", search: "VStack", menu: "VStack",
+  ul: "VStack", ol: "VStack", li: "ListItem",
   button: "Button", hr: "Divider", canvas: "Canvas", img: "Image", progress: "Progress", meter: "Progress", output: "Text",
   input: "Input", textarea: "TextArea", select: "Picker", option: "Option", label: "Label",
 };
 
 function isContainer(node: NativeNode): boolean {
-  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "ScrollView" || node.kind === "Picker" || node.kind === "Label" || node.kind === "#root";
+  return node.kind === "VStack" || node.kind === "HStack" || node.kind === "ZStack" || node.kind === "ScrollView" || node.kind === "Picker" || node.kind === "Label" || node.kind === "ListItem" || node.kind === "#root";
 }
 
 export function createNativeRenderer(driver: NativeDriver) {
@@ -198,6 +199,8 @@ export function createNativeRenderer(driver: NativeDriver) {
       throw new Error(`${parent.kind} cannot contain children`);
     } else if ((parent.kind === "Picker") !== (node.kind === "Option")) {
       throw new Error("<option> goes in <select>, and <select> holds only <option>");
+    } else if ((parent.tag === "ul" || parent.tag === "ol") && node.kind !== "ListItem") {
+      throw new Error(`<${parent.tag}> holds only <li>`);
     }
     for (let ancestor: NativeNode | null = parent; ancestor; ancestor = ancestor.parent) {
       if (ancestor === node) throw new Error("Cannot insert a node into its own subtree");

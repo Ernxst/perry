@@ -83,6 +83,15 @@ export namespace JSX {
     figure: BlockProps;
     search: BlockProps;
     menu: BlockProps;
+    /** Holds only `li`. */
+    ul: BlockProps;
+    /** Holds only `li`, numbered from 1. */
+    ol: BlockProps;
+    /**
+     * Natively its marker beside a column of its children, so text with other elements in it
+     * goes in a `span`: `<li><span>a <strong>b</strong></span></li>`.
+     */
+    li: BlockProps;
     /** Natively underlined text that opens `href` with the system when clicked; `target` has no effect there. */
     a: TextProps & { href?: string; target?: string };
     button: Common & { children?: Element; disabled?: boolean; onClick?: () => void };

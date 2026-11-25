@@ -35,6 +35,7 @@ mark { align-self: flex-start; background: #ff0; color: #000; }
   :is(main, header, footer, nav, section, article, aside, figure, search, menu, div:not([class*="perry-"])) {
   display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; box-sizing: border-box;
 }
+ul, ol { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-left: 20px; }
 button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: #fff; color: #000; }
 a { color: rgb(0, 104, 218); align-self: flex-start; }
 img { align-self: flex-start; object-fit: fill; }

@@ -9,7 +9,7 @@ import {
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
-  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth,
+  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetHugging, stackSetAlignment,
   type Widget,
 } from "perry/ui";
 import { openURL } from "perry/system";
@@ -45,6 +45,11 @@ const TEXTAREA_HEIGHT = 60;
 const PROGRESS_WIDTH = 150;
 const PROGRESS_HEIGHT = 6;
 const SPINNER_SIZE = 16;
+// A list item's marker sits in this width, as the web's list padding holds its marker.
+const MARKER_WIDTH = 14;
+const LIST_GAP = 4;
+// stackSetAlignment takes NSLayoutAttribute values.
+const TOP = 3;
 // The web build's link and progress colour, rgb(0, 104, 218), and its progress track.
 const ACCENT = { r: 0, g: 0.41, b: 0.85 };
 const TRACK_ALPHA = 0.12;
@@ -94,7 +99,11 @@ const decorations = new Map<number, number>();
 // AttributedText widgets, by the tag of the text element they show.
 const richTexts = new Map<number, string>();
 // A ScrollView's children go into a column inside it, since Perry's scroll view holds one child.
-const scrolls = new Map<number, Widget>();
+// An <li> is a row of its marker and a column holding its children.
+const bodies = new Map<number, Widget>();
+// An <ol> numbers its items' markers.
+const lists = new Map<number, { ordered: boolean; items: number[] }>();
+const markers = new Map<number, Widget>();
 
 // An <img> is a stack holding the image, which is made again when src changes.
 interface Picture {
@@ -322,6 +331,35 @@ function createBar(meter: boolean): Widget {
   return wrapper;
 }
 
+function createListItem(): Widget {
+  const item = NativeHStack(6, []);
+  const marker = Text("•");
+  widgetSetWidth(marker, MARKER_WIDTH);
+  const body = NativeVStack(LIST_GAP, []);
+  // Low hugging lets the column take the rest of the row's width.
+  widgetSetHugging(body, 1);
+  columns.add(body);
+  widgetAddChild(item, marker);
+  widgetAddChild(item, body);
+  stackSetAlignment(item, TOP);
+  markers.set(item, marker);
+  bodies.set(item, body);
+  slotted.add(item);
+  return item;
+}
+
+function unlist(parent: number, child: number): void {
+  const list = lists.get(parent);
+  if (!list || !list.items.includes(child)) return;
+  list.items.splice(list.items.indexOf(child), 1);
+  numberItems(list);
+}
+
+function numberItems(list: { ordered: boolean; items: number[] }): void {
+  if (!list.ordered) return;
+  list.items.forEach((item, index) => textSetString(markers.get(item)!, `${index + 1}.`));
+}
+
 function setOptionProperty(option: Option, name: string, value: unknown): void {
   if (name === "text") option.label = value == null ? "" : String(value);
   else if (name === "value") option.value = value == null ? undefined : String(value);
@@ -372,10 +410,13 @@ const driver: NativeDriver = {
   create(kind, tag, emit): number {
     switch (kind) {
       case "VStack": {
-        const column = NativeVStack(8, []);
+        const list = tag === "ul" || tag === "ol";
+        const column = NativeVStack(list ? LIST_GAP : 8, []);
         columns.add(column);
+        if (list) lists.set(column, { ordered: tag === "ol", items: [] });
         return column;
       }
+      case "ListItem": return createListItem();
       case "HStack": {
         // In the slot a row is as wide as its column, so a spacer after its children keeps them at the start.
         const row = NativeHStack(8, []);
@@ -390,7 +431,7 @@ const driver: NativeDriver = {
         const content = NativeVStack(8, []);
         columns.add(content);
         scrollviewSetChild(scroll, content);
-        scrolls.set(scroll, content);
+        bodies.set(scroll, content);
         return scroll;
       }
       case "RichText": return createRichText(tag);
@@ -478,7 +519,7 @@ const driver: NativeDriver = {
       case "disabled": widgetSetEnabled(widget, value ? 0 : 1); return;
       case "title": widgetSetTooltip(widget, value == null ? "" : String(value)); return;
       case "cornerRadius": setCornerRadius(widget, numeric(value, 0)); return;
-      case "padding": setPadding(scrolls.get(handle) ?? widget, numeric(value, 0)); return;
+      case "padding": setPadding(bodies.get(handle) ?? widget, numeric(value, 0)); return;
       case "href":
         if (!links.has(handle)) throw new Error(`href is unsupported on ${kind}`);
         links.set(handle, value == null ? "" : String(value));
@@ -497,8 +538,8 @@ const driver: NativeDriver = {
     }
   },
   insert(parent, child, index, previousParent) {
-    parent = scrolls.get(parent) ?? parent;
-    if (previousParent !== null) previousParent = scrolls.get(previousParent) ?? previousParent;
+    parent = bodies.get(parent) ?? parent;
+    if (previousParent !== null) previousParent = bodies.get(previousParent) ?? previousParent;
     const picker = controls.get(parent);
     if (picker) {
       if (previousParent !== null) driver.remove(previousParent, child);
@@ -506,6 +547,12 @@ const driver: NativeDriver = {
       options.get(child)!.picker = parent;
       schedule(picker);
       return;
+    }
+    if (previousParent !== null) unlist(previousParent, child);
+    const list = lists.get(parent);
+    if (list) {
+      list.items.splice(index, 0, child);
+      numberItems(list);
     }
     const label = labels.get(parent);
     if (label) {
@@ -524,7 +571,13 @@ const driver: NativeDriver = {
     if (columns.has(parent) && slotted.has(child)) widgetSetMaxWidth(child as Widget, 1e6);
   },
   move(parent, from, to) {
-    parent = scrolls.get(parent) ?? parent;
+    parent = bodies.get(parent) ?? parent;
+    const list = lists.get(parent);
+    if (list) {
+      const [item] = list.items.splice(from, 1);
+      list.items.splice(to, 0, item);
+      numberItems(list);
+    }
     const picker = controls.get(parent);
     if (!picker) return widgetReorderChild(parent as Widget, from, to);
     const [moved] = picker.options.splice(from, 1);
@@ -532,9 +585,10 @@ const driver: NativeDriver = {
     schedule(picker);
   },
   remove(parent, child) {
-    parent = scrolls.get(parent) ?? parent;
+    parent = bodies.get(parent) ?? parent;
     const label = labels.get(parent);
     if (label && label.control === child) label.control = 0;
+    unlist(parent, child);
     const picker = controls.get(parent);
     if (!picker) return widgetRemoveChild(parent as Widget, child as Widget);
     picker.options.splice(picker.options.indexOf(child), 1);
