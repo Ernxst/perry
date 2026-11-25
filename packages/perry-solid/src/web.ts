@@ -12,8 +12,15 @@ export const For = SolidFor as <T>(props: {
   children: (item: T, index: Accessor<number>) => JSX.Element;
 }) => JSX.Element;
 
-// Sizes match the native driver in index.ts.
+// Sizes and colours match the native driver in index.ts.
 const STYLES = `
+:root {
+  color-scheme: light dark;
+  --perry-accent: light-dark(rgb(0, 104, 218), rgb(10, 133, 255));
+  --perry-track: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.15));
+  --perry-border: light-dark(rgba(0, 0, 0, 0.2), rgba(255, 255, 255, 0.2));
+  --perry-box: light-dark(#fff, rgb(51, 51, 51));
+}
 body { margin: 0; font: 13px system-ui, sans-serif; }
 [hidden] { display: none !important; }
 .perry-vstack, .perry-hstack { display: flex; gap: 8px; box-sizing: border-box; }
@@ -35,25 +42,25 @@ mark { align-self: flex-start; background: #ff0; color: #000; }
   :is(main, header, footer, nav, section, article, aside, figure, search, menu, form, div:not([class*="perry-"])) {
   display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; box-sizing: border-box;
 }
-fieldset { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 12px; min-width: 0; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 6px; }
+fieldset { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 12px; min-width: 0; border: 1px solid var(--perry-border); border-radius: 6px; }
 legend { float: left; padding: 0; font-weight: 600; }
 details { align-self: stretch; }
 details::details-content { display: flex; flex-direction: column; gap: 8px; }
 details[open] > summary { margin-bottom: 8px; }
 summary { cursor: default; }
-dialog[open]:not(:modal) { position: static; display: flex; flex-direction: column; gap: 8px; align-self: stretch; width: auto; margin: 0; padding: 16px; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 10px; background: #fff; color: inherit; }
-dialog:modal { display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; width: min(480px, calc(100% - 40px)); max-width: none; padding: 16px; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 10px; background: #fff; color: inherit; }
-dialog::backdrop { background: rgba(0, 0, 0, 0.1); }
+dialog[open]:not(:modal) { position: static; display: flex; flex-direction: column; gap: 8px; align-self: stretch; width: auto; margin: 0; padding: 16px; border: 1px solid var(--perry-border); border-radius: 10px; background: var(--perry-box); color: inherit; }
+dialog:modal { display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; width: min(480px, calc(100% - 40px)); max-width: none; padding: 16px; border: 1px solid var(--perry-border); border-radius: 10px; background: var(--perry-box); color: inherit; }
+dialog::backdrop { background: light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.4)); }
 ul, ol { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-left: 20px; }
-button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: #fff; color: #000; }
-a { color: rgb(0, 104, 218); align-self: flex-start; }
+button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: light-dark(#fff, rgb(101, 101, 101)); color: light-dark(#000, #fff); }
+a { color: var(--perry-accent); align-self: flex-start; }
 img { align-self: flex-start; object-fit: fill; }
 iframe { align-self: flex-start; border: 0; }
-progress, meter { appearance: none; align-self: flex-start; width: 150px; height: 6px; border: 0; border-radius: 3px; background: rgba(0, 0, 0, 0.12); overflow: hidden; }
+progress, meter { appearance: none; align-self: flex-start; width: 150px; height: 6px; border: 0; border-radius: 3px; background: var(--perry-track); overflow: hidden; }
 progress::-webkit-progress-bar, meter::-webkit-meter-bar { background: transparent; border: 0; height: 6px; }
-progress::-webkit-progress-value, meter::-webkit-meter-optimum-value { background: rgb(0, 104, 218); }
-progress::-moz-progress-bar, meter::-moz-meter-bar { background: rgb(0, 104, 218); }
-hr { align-self: stretch; margin: 0; border: 0; border-top: 1px solid #0002; }
+progress::-webkit-progress-value, meter::-webkit-meter-optimum-value { background: var(--perry-accent); }
+progress::-moz-progress-bar, meter::-moz-meter-bar { background: var(--perry-accent); }
+hr { align-self: stretch; margin: 0; border: 0; border-top: 1px solid var(--perry-border); }
 table { align-self: flex-start; table-layout: fixed; width: max-content; }
 label { display: flex; align-items: center; gap: 8px; align-self: flex-start; }
 input, textarea, select { font: inherit; align-self: flex-start; }
