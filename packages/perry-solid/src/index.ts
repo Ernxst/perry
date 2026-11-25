@@ -10,6 +10,7 @@ import {
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetHugging, stackSetAlignment,
+  widgetSetBorderWidth, widgetSetBorderColor,
   type Widget,
 } from "perry/ui";
 import { openURL } from "perry/system";
@@ -48,6 +49,8 @@ const SPINNER_SIZE = 16;
 // A list item's marker sits in this width, as the web's list padding holds its marker.
 const MARKER_WIDTH = 14;
 const LIST_GAP = 4;
+// A <fieldset>'s box, matching the web stylesheet's.
+const FIELDSET = { padding: 12, radius: 6, alpha: 0.2 };
 // stackSetAlignment takes NSLayoutAttribute values.
 const TOP = 3;
 // The web build's link and progress colour, rgb(0, 104, 218), and its progress track.
@@ -439,7 +442,7 @@ function appendRun(text: Widget, run: TextRun): void {
   run.tags.forEach((tag, depth) => {
     if (tag === "a" && depth > 0) throw new Error("<a> inside text is unsupported natively; put it beside the text in an HStack");
     if (HEADINGS[tag]) { size = HEADINGS[tag]; bold = 1; }
-    if (tag === "strong" || tag === "b") bold = 1;
+    if (tag === "strong" || tag === "b" || tag === "legend") bold = 1;
     if (ITALIC.has(tag)) italic = 1;
     if (SMALLER.has(tag)) size = SMALL;
     if (DECORATIONS[tag] === 1) underline = 1;
@@ -461,6 +464,13 @@ const driver: NativeDriver = {
         const column = NativeVStack(list ? LIST_GAP : 8, []);
         columns.add(column);
         if (list) lists.set(column, { ordered: tag === "ol", items: [] });
+        if (tag === "fieldset") {
+          setPadding(column, FIELDSET.padding);
+          setCornerRadius(column, FIELDSET.radius);
+          widgetSetBorderWidth(column, 1);
+          widgetSetBorderColor(column, 0, 0, 0, FIELDSET.alpha);
+          slotted.add(column);
+        }
         return column;
       }
       case "ListItem": return createListItem();
@@ -489,6 +499,7 @@ const driver: NativeDriver = {
         if (tag !== "mark") slotted.add(text);
         if (HEADINGS[tag]) textSetFontWeight(text, HEADINGS[tag], SEMIBOLD);
         else if (tag === "strong" || tag === "b") textSetFontWeight(text, BODY, BOLD);
+        else if (tag === "legend") textSetFontWeight(text, BODY, SEMIBOLD);
         else if (SMALLER.has(tag)) textSetFontSize(text, SMALL);
         else if (MONOSPACED.has(tag)) textSetFontFamily(text, "monospaced");
         else if (tag === "mark") widgetSetBackgroundColor(text, MARK.r, MARK.g, MARK.b, 1);

@@ -87,6 +87,9 @@ export namespace JSX {
      * `onSubmit` fires when a button inside it is clicked, unless the button's `type` is "button".
      * Call `event.preventDefault()`, or the web page reloads. Natively Return in a text field doesn't submit.
      */
+    /** A bordered box; its `legend` goes first, inside the border, and `disabled` isn't supported. */
+    fieldset: BlockProps;
+    legend: TextProps;
     form: BlockProps & { onSubmit?: (event: { preventDefault(): void }) => void };
     /** Holds only `li`. */
     ul: BlockProps;

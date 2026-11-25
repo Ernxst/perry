@@ -35,6 +35,8 @@ mark { align-self: flex-start; background: #ff0; color: #000; }
   :is(main, header, footer, nav, section, article, aside, figure, search, menu, form, div:not([class*="perry-"])) {
   display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; box-sizing: border-box;
 }
+fieldset { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 12px; min-width: 0; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 6px; }
+legend { float: left; padding: 0; font-weight: 600; }
 details { align-self: stretch; }
 details::details-content { display: flex; flex-direction: column; gap: 8px; }
 details[open] > summary { margin-bottom: 8px; }
