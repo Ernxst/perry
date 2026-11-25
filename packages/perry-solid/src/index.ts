@@ -7,6 +7,7 @@ import {
   widgetSetBackgroundColor, setCornerRadius, setPadding,
   type Widget,
 } from "perry/ui";
+import { canvasElement, setCanvasSize } from "#browser";
 import { createNativeRenderer, type NativeDriver, type ElementName } from "./renderer.ts";
 export type { NativeNode, Child, Component, Props, ElementName } from "./renderer.ts";
 export { For } from "./renderer.ts";
@@ -20,6 +21,8 @@ function numeric(value: unknown, fallback: number): number {
   return value;
 }
 
+const canvases = new Map<number, object>();
+
 const driver: NativeDriver = {
   create(kind: ElementName, onPress: () => void): number {
     switch (kind) {
@@ -30,7 +33,7 @@ const driver: NativeDriver = {
       case "Button": return Button("", onPress);
       case "Spacer": return Spacer();
       case "Divider": return Divider();
-      case "BloomView": return BloomView(0, 0);
+      case "Canvas": return BloomView(0, 0);
     }
   },
   setProperty(handle, kind, name, value) {
@@ -41,8 +44,14 @@ const driver: NativeDriver = {
         else if (kind === "Button") buttonSetTitle(widget, value == null ? "" : String(value));
         else throw new Error(`text is unsupported on ${kind}`);
         return;
-      case "width": widgetSetWidth(widget, numeric(value, 0)); return;
-      case "height": widgetSetHeight(widget, numeric(value, 0)); return;
+      case "width":
+        widgetSetWidth(widget, numeric(value, 0));
+        if (kind === "Canvas") setCanvasSize(canvases.get(handle), name, numeric(value, 0));
+        return;
+      case "height":
+        widgetSetHeight(widget, numeric(value, 0));
+        if (kind === "Canvas") setCanvasSize(canvases.get(handle), name, numeric(value, 0));
+        return;
       case "opacity": widgetSetOpacity(widget, numeric(value, 1)); return;
       case "hidden": widgetSetHidden(widget, value ? 1 : 0); return;
       case "disabled": widgetSetEnabled(widget, value ? 0 : 1); return;
@@ -76,6 +85,12 @@ const driver: NativeDriver = {
   },
   move(parent, from, to) { widgetReorderChild(parent as Widget, from, to); },
   remove(parent, child) { widgetRemoveChild(parent as Widget, child as Widget); },
+  element(kind, handle) {
+    if (kind !== "Canvas") return undefined;
+    const canvas = canvasElement(handle);
+    canvases.set(handle, canvas);
+    return canvas;
+  },
 };
 
 const native = createNativeRenderer(driver);

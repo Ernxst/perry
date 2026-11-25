@@ -1,7 +1,7 @@
 import { createRenderer } from "solid-js/universal";
 import { createRoot, getOwner, onCleanup, mergeProps, For as SolidFor, type Accessor } from "solid-js";
 
-export type ElementName = "VStack" | "HStack" | "ZStack" | "Text" | "Button" | "Spacer" | "Divider" | "BloomView";
+export type ElementName = "VStack" | "HStack" | "ZStack" | "Text" | "Button" | "Spacer" | "Divider" | "Canvas";
 export type Props = Record<string, unknown>;
 export type Child = NativeNode | string | number | boolean | null | undefined | Child[] | (() => Child);
 export type Component<P = Props> = (props: P) => Child;
@@ -20,6 +20,12 @@ export interface NativeDriver {
   insert(parent: number, child: number, index: number, previousParent: number | null): void;
   move(parent: number, from: number, to: number): void;
   remove(parent: number, child: number): void;
+  /**
+   * The object `ref` receives for an element of this kind, if it isn't the plain node.
+   * The node's fields are copied onto it, which is why the child list is `nodes`:
+   * a DOM element's `children` is read-only.
+   */
+  element?(kind: ElementName, handle: number): object | undefined;
 }
 
 /** Retained ordering metadata; native handles themselves have no sibling API. */
@@ -28,7 +34,7 @@ export interface NativeNode {
   handle: number;
   materialized: boolean;
   parent: NativeNode | null;
-  children: NativeNode[];
+  nodes: NativeNode[];
   props: Props;
   text: string;
 }
@@ -43,7 +49,7 @@ function isContainer(node: NativeNode): boolean {
 
 export function createNativeRenderer(driver: NativeDriver) {
   function makeNode(kind: NativeNode["kind"], text = ""): NativeNode {
-    return { kind, handle: 0, materialized: false, parent: null, children: [], props: {}, text };
+    return { kind, handle: 0, materialized: false, parent: null, nodes: [], props: {}, text };
   }
 
   function createElement(name: string): NativeNode {
@@ -56,19 +62,22 @@ export function createNativeRenderer(driver: NativeDriver) {
       case "button": name = "Button"; break;
       case "spacer": name = "Spacer"; break;
       case "divider": name = "Divider"; break;
-      case "bloomview": name = "BloomView"; break;
+      case "canvas": name = "Canvas"; break;
     }
-    if (!["VStack", "HStack", "ZStack", "Text", "Button", "Spacer", "Divider", "BloomView"].includes(name)) {
+    if (!["VStack", "HStack", "ZStack", "Text", "Button", "Spacer", "Divider", "Canvas"].includes(name)) {
       throw new Error(`Unsupported Perry Solid element: ${name}`);
     }
-    const node = makeNode(name as ElementName);
-    // A native button's dispatcher outlives a removed Solid owner. Release
-    // user callbacks when that owner is disposed, even before native detach.
-    if (getOwner()) onCleanup(() => { node.props = {}; });
-    node.handle = driver.create(name as ElementName, () => {
+    let node: NativeNode;
+    const handle = driver.create(name as ElementName, () => {
       const callback = node.props.onPress;
       if (typeof callback === "function") callback();
     });
+    const element = driver.element?.(name as ElementName, handle);
+    node = element ? Object.assign(element, makeNode(name as ElementName)) : makeNode(name as ElementName);
+    // A native button's dispatcher outlives a removed Solid owner. Release
+    // user callbacks when that owner is disposed, even before native detach.
+    if (getOwner()) onCleanup(() => { node.props = {}; });
+    node.handle = handle;
     node.materialized = true;
     return node;
   }
@@ -86,14 +95,14 @@ export function createNativeRenderer(driver: NativeDriver) {
 
   function refreshLabel(node: NativeNode): void {
     let text = "";
-    for (const child of node.children) text += child.text;
+    for (const child of node.nodes) text += child.text;
     driver.setProperty(node.handle, node.kind as ElementName, "text", text, undefined);
   }
 
   function removeNode(parent: NativeNode, node: NativeNode): void {
     if (node.parent !== parent) return;
-    const index = parent.children.indexOf(node);
-    parent.children.splice(index, 1);
+    const index = parent.nodes.indexOf(node);
+    parent.nodes.splice(index, 1);
     node.parent = null;
     if (isLabel(parent)) refreshLabel(parent);
     else driver.remove(parent.handle, materialize(node));
@@ -111,10 +120,10 @@ export function createNativeRenderer(driver: NativeDriver) {
       if (ancestor === node) throw new Error("Cannot insert a node into its own subtree");
     }
     const previousParent = node.parent;
-    const previousIndex = previousParent ? previousParent.children.indexOf(node) : -1;
-    if (previousParent) previousParent.children.splice(previousIndex, 1);
-    const index = anchor ? parent.children.indexOf(anchor) : parent.children.length;
-    parent.children.splice(index, 0, node);
+    const previousIndex = previousParent ? previousParent.nodes.indexOf(node) : -1;
+    if (previousParent) previousParent.nodes.splice(previousIndex, 1);
+    const index = anchor ? parent.nodes.indexOf(anchor) : parent.nodes.length;
+    parent.nodes.splice(index, 0, node);
     node.parent = parent;
 
     if (previousParent && previousParent !== parent && isLabel(previousParent)) refreshLabel(previousParent);
@@ -150,10 +159,10 @@ export function createNativeRenderer(driver: NativeDriver) {
     insertNode,
     removeNode,
     getParentNode(node) { return node.parent || undefined; },
-    getFirstChild(node) { return node.children[0]; },
+    getFirstChild(node) { return node.nodes[0]; },
     getNextSibling(node) {
       const parent = node.parent;
-      return parent ? parent.children[parent.children.indexOf(node) + 1] : undefined;
+      return parent ? parent.nodes[parent.nodes.indexOf(node) + 1] : undefined;
     },
   });
 
@@ -175,8 +184,8 @@ export function createNativeRenderer(driver: NativeDriver) {
   }
 
   function releaseSubtree(node: NativeNode): void {
-    for (const child of node.children) releaseSubtree(child);
-    node.children = [];
+    for (const child of node.nodes) releaseSubtree(child);
+    node.nodes = [];
     node.parent = null;
     node.props = {};
   }
@@ -195,8 +204,8 @@ export function createNativeRenderer(driver: NativeDriver) {
       if (disposed) return;
       disposed = true;
       dispose();
-      while (root.children.length) {
-        const child = root.children[root.children.length - 1];
+      while (root.nodes.length) {
+        const child = root.nodes[root.nodes.length - 1];
         removeNode(root, child);
         releaseSubtree(child);
       }

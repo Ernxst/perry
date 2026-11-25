@@ -29,6 +29,6 @@ export namespace JSX {
     button: NativeProps;
     spacer: NativeProps;
     divider: NativeProps;
-    bloomview: NativeProps;
+    canvas: Omit<NativeProps, "ref"> & { ref?: HTMLCanvasElement | ((element: HTMLCanvasElement) => void) };
   }
 }
