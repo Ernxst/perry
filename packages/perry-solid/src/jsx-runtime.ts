@@ -127,10 +127,17 @@ export namespace JSX {
     details: BlockProps & { open?: boolean };
     summary: TextProps;
     /**
-     * A box shown in place while `open`, on both platforms; it doesn't float above the page or
-     * window. `showModal()` is web-only.
+     * A box shown in place while `open`. Through its `ref`, `show()`, `showModal()`, `close()`,
+     * `open` and `returnValue` work in both builds; `showModal()` centres the box, at most 480
+     * pixels wide, over the window, which it dims. `onClose` fires when `close()` closes it. Natively
+     * Escape doesn't close it, `form method="dialog"` doesn't either, and the root that `render`
+     * mounts into must be a `ZStack`.
      */
-    dialog: BlockProps & { open?: boolean };
+    dialog: BlockProps & {
+      open?: boolean;
+      onClose?: () => void;
+      ref?: HTMLDialogElement | ((element: HTMLDialogElement) => void);
+    };
     /** Holds `thead`, `tbody`, `tfoot` and `tr`; natively a `thead` or `tfoot` stays where it's written. */
     table: TablePartProps;
     /** Holds only `tr`. */

@@ -50,6 +50,10 @@ const SPINNER_SIZE = 16;
 const FRAME = { width: 300, height: 150 };
 // A <dialog>'s box, matching the web stylesheet's.
 const DIALOG = { padding: 16, radius: 10 };
+// A modal dialog's widest box and its distance from the window's edges, and the dimming a
+// browser's ::backdrop gives the page behind it.
+const MODAL = { width: 480, margin: 20, backdrop: 0.1 };
+const EQUAL_CENTERING = 4;
 // A browser's default spacing between table cells and padding inside them, and the width a
 // column takes when the first row gives none.
 const TABLE = { spacing: 2, padding: 1, width: 100 };
@@ -405,7 +409,18 @@ function setFrameProperty(frame: Frame, name: string, value: unknown): boolean {
   }
 }
 
-const dialogs = new Set<number>();
+interface Dialog {
+  placeholder: Widget;
+  box: Widget;
+  open: boolean;
+  modal: boolean;
+  emit: (handler: string, state: ControlState) => void;
+}
+const dialogs = new Map<number, Dialog>();
+let renderRoot = 0;
+let modalBackdrop = 0 as Widget;
+let modalLayer = 0 as Widget;
+let modalCount = 0;
 /** Texts in the body font, which a header cell makes bold. */
 const plainTexts = new Set<number>();
 const headerCells = new Set<number>();
@@ -529,20 +544,95 @@ function createDetails(): Widget {
   return details;
 }
 
-// A <dialog> shows in place, as a box that's there only while it's open. Perry's sheets
-// can't be dismissed and its extra windows don't appear, so it can't float above the window.
-function createDialog(): Widget {
-  const dialog = NativeVStack(8, []);
-  setPadding(dialog, DIALOG.padding);
-  setCornerRadius(dialog, DIALOG.radius);
-  widgetSetBackgroundColor(dialog, 1, 1, 1, 1);
-  widgetSetBorderWidth(dialog, 1);
-  widgetSetBorderColor(dialog, 0, 0, 0, FIELDSET.alpha);
-  widgetSetHidden(dialog, 1);
-  columns.add(dialog);
-  slotted.add(dialog);
-  dialogs.add(dialog);
-  return dialog;
+// A <dialog> is a placeholder holding its box, shown in place while it's open. showModal()
+// moves the box into a layer over the whole window, since Perry's sheets can't be dismissed and
+// its extra windows don't appear; the placeholder keeps the dialog's place among its siblings.
+function createDialog(emit: Dialog["emit"]): Widget {
+  const box = makeColumn(8);
+  setPadding(box, DIALOG.padding);
+  setCornerRadius(box, DIALOG.radius);
+  widgetSetBackgroundColor(box, 1, 1, 1, 1);
+  widgetSetBorderWidth(box, 1);
+  widgetSetBorderColor(box, 0, 0, 0, FIELDSET.alpha);
+  const placeholder = NativeVStack(0, [box]);
+  widgetSetMaxWidth(box, 1e6);
+  widgetSetHidden(placeholder, 1);
+  slotted.add(placeholder);
+  bodies.set(placeholder, box);
+  dialogs.set(placeholder, { placeholder, box, open: false, modal: false, emit });
+  return placeholder;
+}
+
+// The render root is a ZStack, so the backdrop and the layer that centres a modal box, added
+// last, cover everything the app renders. AppKit passes a click that lands on a view without a
+// mouse-down handler of its own, such as the layer, to a control beneath it, so the backdrop is
+// an empty label, which takes the click itself. It stops the click only as the layer's sibling,
+// not as its parent. A click recognizer would stop it too, but it takes the clicks of the
+// buttons inside its view, the dialog's own among them.
+function getModalLayer(): Widget {
+  if (modalLayer) return modalLayer;
+  if (!renderRoot) throw new Error("showModal() needs the app rendered with render()");
+  modalBackdrop = Text("");
+  widgetSetBackgroundColor(modalBackdrop, 0, 0, 0, MODAL.backdrop);
+  modalLayer = NativeVStack(0, [NativeVStack(0, []), NativeVStack(0, [])]);
+  stackSetDistribution(modalLayer, EQUAL_CENTERING);
+  setPadding(modalLayer, MODAL.margin);
+  for (const view of [modalBackdrop, modalLayer]) {
+    widgetSetHidden(view, 1);
+    widgetAddChild(renderRoot as Widget, view);
+  }
+  return modalLayer;
+}
+
+function moveBox(dialog: Dialog, from: Widget, to: Widget, index: number): void {
+  if (__platform__ !== 0) widgetRemoveChild(from, dialog.box);
+  widgetAddChildAt(to, dialog.box, index);
+}
+
+function showDialog(dialog: Dialog, modal: boolean): void {
+  if (dialog.open) {
+    if (dialog.modal === modal) return;
+    throw new Error(`A dialog already open ${dialog.modal ? "modally" : "in place"} can't be shown ${modal ? "modally" : "in place"}`);
+  }
+  dialog.open = true;
+  dialog.modal = modal;
+  if (!modal) return widgetSetHidden(dialog.placeholder, 0);
+  const layer = getModalLayer();
+  moveBox(dialog, dialog.placeholder, layer, 1);
+  widgetSetMaxWidth(dialog.box, MODAL.width);
+  modalCount++;
+  widgetSetHidden(modalBackdrop, 0);
+  widgetSetHidden(layer, 0);
+}
+
+function hideDialog(dialog: Dialog): boolean {
+  if (!dialog.open) return false;
+  if (dialog.modal) {
+    moveBox(dialog, modalLayer, dialog.placeholder, 0);
+    widgetSetMaxWidth(dialog.box, 1e6);
+    if (--modalCount === 0) {
+      widgetSetHidden(modalBackdrop, 1);
+      widgetSetHidden(modalLayer, 1);
+    }
+  }
+  widgetSetHidden(dialog.placeholder, 1);
+  dialog.open = false;
+  dialog.modal = false;
+  return true;
+}
+
+/** What a dialog's `ref` gets natively: the HTMLDialogElement methods both builds support. */
+class DialogElement {
+  declare handle: number;
+  returnValue = "";
+  get open(): boolean { return dialogs.get(this.handle)!.open; }
+  show(): void { showDialog(dialogs.get(this.handle)!, false); }
+  showModal(): void { showDialog(dialogs.get(this.handle)!, true); }
+  close(returnValue?: string): void {
+    const dialog = dialogs.get(this.handle)!;
+    if (returnValue !== undefined) this.returnValue = returnValue;
+    if (hideDialog(dialog)) dialog.emit("onClose", { value: this.returnValue, checked: false });
+  }
 }
 
 function unlist(parent: number, child: number): void {
@@ -667,7 +757,7 @@ const driver: NativeDriver = {
       case "TableRow": return NativeHStack(TABLE.spacing, []);
       case "TableCell": return createCell(tag === "th");
       case "Details": return createDetails();
-      case "Dialog": return createDialog();
+      case "Dialog": return createDialog(emit);
       case "Image": {
         const wrapper = NativeHStack(0, []);
         images.set(wrapper, { wrapper, inner: 0, src: "", alt: "", width: undefined, height: undefined });
@@ -720,7 +810,8 @@ const driver: NativeDriver = {
     if (kind === "TableCell" && name === "width") {
       return widgetSetWidth(handle as Widget, numeric(value, TABLE.width) + 2 * TABLE.padding);
     }
-    if (dialogs.has(handle) && name === "open") return widgetSetHidden(handle as Widget, value ? 0 : 1);
+    const dialog = dialogs.get(handle);
+    if (dialog && name === "open") return void (value ? showDialog(dialog, false) : hideDialog(dialog));
     const disclosure = disclosures.get(handle);
     if (disclosure && name === "open") {
       disclosure.open = !!value;
@@ -882,6 +973,7 @@ const driver: NativeDriver = {
     addClick(handle as Widget, () => emit("onClick", { value: "", checked: false }));
   },
   element(kind, handle) {
+    if (kind === "Dialog") return new DialogElement();
     if (kind !== "Canvas") return undefined;
     const canvas = new CanvasElement(handle);
     canvases.set(handle, canvas);
@@ -891,7 +983,11 @@ const driver: NativeDriver = {
 
 const native = createNativeRenderer(driver);
 export const h = native.h;
-export const render = native.render;
+/** Mounts the app into a native ZStack, which a modal dialog's layer then covers. */
+export function render(code: () => JSX.Element, root: Widget): () => void {
+  renderRoot = root;
+  return native.render(code as Parameters<typeof native.render>[0], root);
+}
 export const createElement = native.createElement;
 export const createTextNode = native.createTextNode;
 export const insert = native.insert;

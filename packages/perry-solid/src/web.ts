@@ -41,7 +41,9 @@ details { align-self: stretch; }
 details::details-content { display: flex; flex-direction: column; gap: 8px; }
 details[open] > summary { margin-bottom: 8px; }
 summary { cursor: default; }
-dialog[open] { position: static; display: flex; flex-direction: column; gap: 8px; align-self: stretch; width: auto; margin: 0; padding: 16px; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 10px; background: #fff; color: inherit; }
+dialog[open]:not(:modal) { position: static; display: flex; flex-direction: column; gap: 8px; align-self: stretch; width: auto; margin: 0; padding: 16px; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 10px; background: #fff; color: inherit; }
+dialog:modal { display: flex; flex-direction: column; gap: 8px; box-sizing: border-box; width: min(480px, calc(100% - 40px)); max-width: none; padding: 16px; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 10px; background: #fff; color: inherit; }
+dialog::backdrop { background: rgba(0, 0, 0, 0.1); }
 ul, ol { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-left: 20px; }
 button { align-self: flex-start; font: inherit; padding: 3px 14px; border-radius: 6px; border: 0; background: #fff; color: #000; }
 a { color: rgb(0, 104, 218); align-self: flex-start; }
