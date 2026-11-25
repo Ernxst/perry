@@ -343,7 +343,7 @@ function setImageProperty(image: Picture, name: string, value: unknown): boolean
 // Perry's WebView takes its first URL when created.
 interface Frame {
   wrapper: Widget;
-  view: Widget;
+  view: Widget | 0;
   width: number;
   height: number;
 }
