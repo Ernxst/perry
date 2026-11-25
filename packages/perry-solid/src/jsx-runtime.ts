@@ -71,6 +71,7 @@ export namespace JSX {
     time: TextProps;
     address: TextProps;
     figcaption: TextProps;
+    output: TextProps;
     div: BlockProps;
     main: BlockProps;
     header: BlockProps;
