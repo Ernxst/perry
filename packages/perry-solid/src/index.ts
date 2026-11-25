@@ -17,9 +17,9 @@ import { openURL } from "perry/system";
 import { CanvasElement } from "perry-browser";
 import { createNativeRenderer, type ControlState, type NativeDriver, type Props, type TextRun } from "./renderer.ts";
 import type { JSX } from "./jsx-runtime.ts";
-import type { StackProps } from "./types.ts";
+import type { StackProps, TableColumn, TableProps } from "./types.ts";
 export type { NativeNode, Child, Component, Props, ElementName } from "./renderer.ts";
-export type { StackProps } from "./types.ts";
+export type { StackProps, TableColumn, TableProps } from "./types.ts";
 export { For } from "./renderer.ts";
 
 // Perry injects this target constant (0 = macOS, 1 = iOS, 2 = Android, 3 = Windows, 4 = Linux).
@@ -46,6 +46,10 @@ const TEXTAREA_HEIGHT = 60;
 const PROGRESS_WIDTH = 150;
 const PROGRESS_HEIGHT = 6;
 const SPINNER_SIZE = 16;
+const COLUMN_WIDTH = 100;
+const TABLE_HEIGHT = 200;
+const ROW_HEIGHT = 22;
+const CELL_PADDING = 6;
 // The web's default iframe size.
 const FRAME = { width: 300, height: 150 };
 // A list item's marker sits in this width, as the web's list padding holds its marker.
@@ -375,6 +379,110 @@ function setFrameProperty(frame: Frame, name: string, value: unknown): boolean {
   }
 }
 
+// A Table component is built from stacks, since Perry's table view shows none of the cells it's given.
+interface Grid {
+  wrapper: Widget;
+  header: Widget;
+  scroll: Widget;
+  body: Widget;
+  lines: { row: Widget; cells: Widget[] }[];
+  selected: number;
+  columns: readonly TableColumn<unknown>[];
+  rows: readonly unknown[];
+  select: ((index: number) => void) | undefined;
+  width: number | undefined;
+  height: number;
+}
+const grids = new Map<number, Grid>();
+
+function createGrid(): Grid {
+  const wrapper = NativeVStack(0, []);
+  widgetSetBackgroundColor(wrapper, 1, 1, 1, 1);
+  widgetSetBorderWidth(wrapper, 1);
+  widgetSetBorderColor(wrapper, 0, 0, 0, FIELDSET.alpha);
+  const header = NativeHStack(0, []);
+  const scroll = NativeScrollView();
+  const body = NativeVStack(0, []);
+  scrollviewSetChild(scroll, body);
+  widgetAddChild(wrapper, header);
+  widgetAddChild(wrapper, Divider());
+  widgetAddChild(wrapper, scroll);
+  widgetAddChild(wrapper, NativeSpacer());
+  return { wrapper, header, scroll, body, lines: [], selected: -1, columns: [], rows: [], select: undefined, width: undefined, height: TABLE_HEIGHT };
+}
+
+function gridWidth(grid: Grid): number {
+  return grid.width ?? grid.columns.reduce((sum, column) => sum + (column.width ?? COLUMN_WIDTH), 0);
+}
+
+function sizeGrid(grid: Grid): void {
+  const width = gridWidth(grid);
+  widgetSetWidth(grid.wrapper, width);
+  widgetSetHeight(grid.wrapper, grid.height);
+  widgetSetWidth(grid.scroll, width);
+  widgetSetHeight(grid.scroll, Math.max(0, grid.height - ROW_HEIGHT - 1));
+  for (const { row } of grid.lines) widgetSetWidth(row, width);
+}
+
+function gridLine(grid: Grid, texts: string[]): { row: Widget; cells: Widget[] } {
+  const row = NativeHStack(0, []);
+  widgetSetHeight(row, ROW_HEIGHT);
+  const cells = texts.map((text, index) => {
+    const cell = Text(text);
+    widgetSetWidth(cell, (grid.columns[index].width ?? COLUMN_WIDTH) - 2 * CELL_PADDING);
+    const slot = NativeHStack(0, [cell]);
+    setPadding(slot, CELL_PADDING);
+    widgetAddChild(row, slot);
+    return cell;
+  });
+  widgetAddChild(row, NativeSpacer());
+  return { row, cells };
+}
+
+function highlight(grid: Grid, index: number, on: boolean): void {
+  const line = grid.lines[index];
+  if (!line) return;
+  widgetSetBackgroundColor(line.row, ACCENT.r, ACCENT.g, ACCENT.b, on ? 1 : 0);
+  for (const cell of line.cells) textSetColor(cell, on ? 1 : 0, on ? 1 : 0, on ? 1 : 0, on ? 1 : 0.85);
+}
+
+function fillGrid(grid: Grid): void {
+  for (const { row } of grid.lines) widgetRemoveChild(grid.body, row);
+  grid.lines = grid.rows.map((value, index) => {
+    const line = gridLine(grid, grid.columns.map(column => column.cell(value)));
+    widgetSetOnClick(line.row, () => {
+      highlight(grid, grid.selected, false);
+      grid.selected = index;
+      highlight(grid, index, true);
+      grid.select?.(index);
+    });
+    widgetAddChild(grid.body, line.row);
+    return line;
+  });
+  if (grid.selected >= grid.lines.length) grid.selected = -1;
+  highlight(grid, grid.selected, true);
+  sizeGrid(grid);
+}
+
+function setGridProperty(grid: Grid, name: string, value: unknown): boolean {
+  switch (name) {
+    case "columns": {
+      grid.columns = (value ?? []) as Grid["columns"];
+      const header = gridLine(grid, grid.columns.map(column => column.title));
+      widgetRemoveChild(grid.wrapper, grid.header);
+      widgetAddChildAt(grid.wrapper, header.row, 0);
+      grid.header = header.row;
+      fillGrid(grid);
+      return true;
+    }
+    case "rows": grid.rows = (value ?? []) as Grid["rows"]; fillGrid(grid); return true;
+    case "select": grid.select = value as Grid["select"]; return true;
+    case "width": grid.width = value == null ? undefined : numeric(value, 0); sizeGrid(grid); return true;
+    case "height": grid.height = numeric(value, TABLE_HEIGHT); sizeGrid(grid); return true;
+    default: return false;
+  }
+}
+
 function showBar(bar: Bar): void {
   const indeterminate = bar.value == null && !bar.meter;
   widgetSetHidden(bar.track, indeterminate ? 1 : 0);
@@ -585,6 +693,12 @@ const driver: NativeDriver = {
         return wrapper;
       }
       case "Progress": return createBar(tag === "meter");
+      case "Table": {
+        const grid = createGrid();
+        grids.set(grid.wrapper, grid);
+        sizeGrid(grid);
+        return grid.wrapper;
+      }
       case "Frame": {
         const wrapper = NativeHStack(0, []);
         const frame: Frame = { wrapper, view: 0, ...FRAME };
@@ -626,6 +740,8 @@ const driver: NativeDriver = {
     if (image && setImageProperty(image, name, value)) return;
     const bar = bars.get(handle);
     if (bar && setBarProperty(bar, name, value)) return;
+    const grid = grids.get(handle);
+    if (grid && setGridProperty(grid, name, value)) return;
     const frame = frames.get(handle);
     if (frame && setFrameProperty(frame, name, value)) return;
     const disclosure = disclosures.get(handle);
@@ -799,3 +915,14 @@ export function HStack(props: StackProps): JSX.Element { return native.h("hstack
 export function ZStack(props: StackProps): JSX.Element { return native.h("zstack", props as Props); }
 export function Spacer(): JSX.Element { return native.h("spacer", null); }
 export function ScrollView(props: StackProps): JSX.Element { return native.h("scrollview", props as Props); }
+/** A scrolling table of rows, one cell of text per column; `<table>` itself isn't supported. */
+export function Table<T>(props: TableProps<T>): JSX.Element {
+  return native.h("table", {
+    get columns() { return props.columns; },
+    get rows() { return props.rows; },
+    get width() { return props.width; },
+    get height() { return props.height; },
+    get hidden() { return props.hidden; },
+    select: (index: number) => props.onSelect?.(props.rows[index], index),
+  });
+}
