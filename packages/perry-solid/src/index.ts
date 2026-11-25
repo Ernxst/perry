@@ -64,9 +64,9 @@ const canvases = new Map<number, CanvasElement>();
 // A <label> natively is a stack; clicking its text flips the checkbox inside it, as on the web.
 const labels = new Map<number, { control: number }>();
 // A vertical NSStackView lets text run through its trailing padding. Perry's max-width
-// slot holds a child inside both paddings, so text in a column goes into one.
+// slot holds a child inside both paddings, so text and rows in a column go into one.
 const columns = new Set<number>();
-const texts = new Set<number>();
+const slotted = new Set<number>();
 
 const REBUILDS: Record<Control["kind"], string[]> = {
   Input: ["type", "placeholder", "min", "max"],
@@ -199,12 +199,18 @@ const driver: NativeDriver = {
         columns.add(column);
         return column;
       }
-      case "HStack": return NativeHStack(8, []);
+      case "HStack": {
+        // In the slot a row is as wide as its column, so a spacer after its children keeps them at the start.
+        const row = NativeHStack(8, []);
+        widgetAddChild(row, NativeSpacer());
+        slotted.add(row);
+        return row;
+      }
       case "ZStack": return NativeZStack();
       case "Spacer": return NativeSpacer();
       case "Text": {
         const text = Text("");
-        texts.add(text);
+        slotted.add(text);
         if (HEADINGS[tag]) textSetFontWeight(text, HEADINGS[tag], SEMIBOLD);
         else if (tag === "small") textSetFontSize(text, SMALL);
         return text;
@@ -290,7 +296,7 @@ const driver: NativeDriver = {
       widgetRemoveChild(previousParent as Widget, child as Widget);
     }
     widgetAddChildAt(parent as Widget, child as Widget, index);
-    if (columns.has(parent) && texts.has(child)) widgetSetMaxWidth(child as Widget, 1e6);
+    if (columns.has(parent) && slotted.has(child)) widgetSetMaxWidth(child as Widget, 1e6);
   },
   move(parent, from, to) {
     const picker = controls.get(parent);
