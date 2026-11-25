@@ -80,8 +80,8 @@ export namespace JSX {
     figure: BlockProps;
     search: BlockProps;
     menu: BlockProps;
-    /** Natively underlined text that opens `href` with the system when clicked. */
-    a: TextProps & { href?: string };
+    /** Natively underlined text that opens `href` with the system when clicked; `target` has no effect there. */
+    a: TextProps & { href?: string; target?: string };
     button: Common & { children?: Element; disabled?: boolean; onClick?: () => void };
     hr: Common;
     /**

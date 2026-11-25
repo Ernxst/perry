@@ -427,6 +427,10 @@ const driver: NativeDriver = {
         if (!links.has(handle)) throw new Error(`href is unsupported on ${kind}`);
         links.set(handle, value == null ? "" : String(value));
         return;
+      case "target":
+        // The system opens every link in the default browser.
+        if (!links.has(handle)) throw new Error(`target is unsupported on ${kind}`);
+        return;
       case "backgroundColor": {
         const color = value == null ? [0, 0, 0, 0] : value;
         if (!Array.isArray(color) || color.length !== 4) throw new Error("backgroundColor expects [r, g, b, a]");
