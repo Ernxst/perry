@@ -133,9 +133,9 @@ pub fn create_url(url_ptr: *const u8, alt_ptr: *const u8) -> i64 {
             )
         ];
 
-        // ScaleAxesIndependently lets the contained NSImage stretch to
+        // NSImageScaleAxesIndependently (1) lets the contained NSImage stretch to
         // the view's bounds. Callers can override with `imageSetSize`.
-        let _: () = msg_send![&*image_view, setImageScaling: 0i64];
+        let _: () = msg_send![&*image_view, setImageScaling: 1i64];
 
         if !alt.is_empty() {
             let ns_alt = NSString::from_str(&alt);
