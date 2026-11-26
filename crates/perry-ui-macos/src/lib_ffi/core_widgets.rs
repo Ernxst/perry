@@ -553,6 +553,12 @@ pub extern "C" fn perry_ui_widget_set_max_width_alignment(handle: i64, alignment
     widgets::set_max_width_alignment(handle, alignment);
 }
 
+/// Read a widget's frame after layout: `part` 0 x, 1 y from the window's top, 2 width, 3 height.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_get_frame(handle: i64, part: f64) -> f64 {
+    widgets::frame_part(handle, part)
+}
+
 /// Set a fixed height constraint on a widget.
 #[no_mangle]
 pub extern "C" fn perry_ui_widget_set_height(handle: i64, height: f64) {

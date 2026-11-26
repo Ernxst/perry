@@ -593,6 +593,12 @@ pub(crate) const PERRY_UI_TABLE_PART_A: &[MethodRow] = &[
         args: &[ArgKind::Widget, ArgKind::F64],
         ret: ReturnKind::Void,
     },
+    MethodRow {
+        method: "widgetGetFrame",
+        runtime: "perry_ui_widget_get_frame",
+        args: &[ArgKind::Widget, ArgKind::F64],
+        ret: ReturnKind::F64,
+    },
     // ---- Image ----
     MethodRow {
         method: "ImageFile",

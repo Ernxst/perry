@@ -22,6 +22,8 @@ pub mod lazyvstack;
 pub mod map_view;
 mod max_width;
 pub use max_width::{set_max_width, set_max_width_alignment};
+mod measure;
+pub use measure::frame_part;
 pub mod navstack;
 pub(crate) mod padding;
 pub mod pdf_view;

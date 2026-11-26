@@ -959,6 +959,13 @@ export function widgetSetMaxWidth(widget: Widget, maxWidth: number): void;
  * May be set before or after the cap. macOS only.
  */
 export function widgetSetMaxWidthAlignment(widget: Widget, alignment: number): void;
+/**
+ * One side of a widget's frame after layout, in points within its window, with y counted
+ * down from the window's top: part 0 is x, 1 y, 2 width, 3 height. Lays out the window
+ * first, so it reflects changes made just before. A widget not yet in a window reports
+ * its size at 0, 0. macOS only.
+ */
+export function widgetGetFrame(widget: Widget, part: 0 | 1 | 2 | 3): number;
 export function widgetSetHeight(widget: Widget, height: number): void;
 export function widgetSetHugging(widget: Widget, priority: number): void;
 export function widgetSetHidden(widget: Widget, hidden: number): void;
