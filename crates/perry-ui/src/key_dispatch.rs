@@ -39,6 +39,14 @@ extern "C" {
 
 // --- Global state -----------------------------------------------------------
 
+/// Marks a callback slot as empty. A NaN-boxed closure is always a NaN, so NaN can't mark it;
+/// `+0.0` is a plain number, which no closure is.
+const UNSET: f64 = 0.0;
+
+fn is_set(callback: f64) -> bool {
+    callback.to_bits() != UNSET.to_bits()
+}
+
 thread_local! {
     /// Maps from widget handle → callback. Cold path only.
     static KEY_DOWN_CB: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
@@ -47,15 +55,15 @@ thread_local! {
     /// Widget handle currently receiving keyboard events. `0` = app-level.
     static FOCUSED_WIDGET: Cell<i64> = const { Cell::new(0) };
 
-    /// App-level fallback handlers. `NAN` = unset.
-    static APP_KEY_DOWN_CB: Cell<f64> = const { Cell::new(f64::NAN) };
-    static APP_KEY_UP_CB:   Cell<f64> = const { Cell::new(f64::NAN) };
+    /// App-level fallback handlers, [`UNSET`] when none is registered.
+    static APP_KEY_DOWN_CB: Cell<f64> = const { Cell::new(UNSET) };
+    static APP_KEY_UP_CB:   Cell<f64> = const { Cell::new(UNSET) };
 
     /// HOT-PATH cache: resolved callback for the current focused widget,
     /// falling back to the app-level handler. Refreshed only on focus
     /// change / handler (re-)registration.
-    static ACTIVE_DOWN_CB: Cell<f64> = const { Cell::new(f64::NAN) };
-    static ACTIVE_UP_CB:   Cell<f64> = const { Cell::new(f64::NAN) };
+    static ACTIVE_DOWN_CB: Cell<f64> = const { Cell::new(UNSET) };
+    static ACTIVE_UP_CB:   Cell<f64> = const { Cell::new(UNSET) };
 }
 
 /// 128-bit held-key bitset, keyed by `KeyCode.0`. Covers the full canonical
@@ -153,7 +161,7 @@ pub fn on_key_event(code: KeyCode, mods: u32, is_down: bool, is_repeat: bool) {
     } else {
         ACTIVE_UP_CB.with(|c| c.get())
     };
-    if callback.is_nan() {
+    if !is_set(callback) {
         return;
     }
 
@@ -254,5 +262,26 @@ pub(crate) fn scan_key_dispatch_gc_roots(visitor: &mut perry_ffi::GcRootVisitor<
                 callback.set(value);
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_nan_boxed_closure_counts_as_set() {
+        let closure = f64::from_bits(0x7FFD_0000_0000_1000);
+        assert!(closure.is_nan());
+        assert!(is_set(closure));
+        assert!(!is_set(UNSET));
+    }
+
+    #[test]
+    fn the_app_handler_becomes_active_once_registered() {
+        let closure = f64::from_bits(0x7FFD_0000_0000_2000);
+        app_set_on_key_down(closure);
+        assert_eq!(ACTIVE_DOWN_CB.with(|c| c.get()).to_bits(), closure.to_bits());
+        assert!(!is_set(ACTIVE_UP_CB.with(|c| c.get())));
     }
 }
