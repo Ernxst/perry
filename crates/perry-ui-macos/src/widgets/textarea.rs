@@ -87,7 +87,7 @@ use perry_ffi::copy_string_from_raw as str_from_header;
 /// Create a multi-line text area (NSScrollView + NSTextView) with onChange callback.
 /// Returns a widget handle for the outer NSScrollView.
 pub fn create(placeholder_ptr: *const u8, on_change: f64) -> i64 {
-    let _placeholder = unsafe { str_from_header(placeholder_ptr) };
+    let placeholder = unsafe { str_from_header(placeholder_ptr) };
     let _mtm = MainThreadMarker::new().expect("perry/ui must run on the main thread");
 
     unsafe {
@@ -119,6 +119,25 @@ pub fn create(placeholder_ptr: *const u8, on_change: f64) -> i64 {
         let font: *mut AnyObject = msg_send![font_cls, systemFontOfSize: 14.0f64];
         if !font.is_null() {
             let _: () = msg_send![text_view, setFont: font];
+        }
+        if !placeholder.is_empty() && !font.is_null()
+            && objc2::msg_send![text_view, respondsToSelector: objc2::sel!(setPlaceholderAttributedString:)]
+        {
+            let color: *mut AnyObject = msg_send![AnyClass::get(c"NSColor").unwrap(), placeholderTextColor];
+            let keys = [
+                &*objc2_foundation::NSString::from_str("NSFont"),
+                &*objc2_foundation::NSString::from_str("NSColor"),
+            ];
+            let values: [&AnyObject; 2] = [&*font, &*color];
+            let attributes = objc2_foundation::NSDictionary::from_slices(&keys, &values);
+            let text: *mut AnyObject = msg_send![AnyClass::get(c"NSAttributedString").unwrap(), alloc];
+            let text: *mut AnyObject = msg_send![
+                text,
+                initWithString: &*objc2_foundation::NSString::from_str(&placeholder),
+                attributes: &*attributes
+            ];
+            let _: () = msg_send![text_view, setPlaceholderAttributedString: text];
+            let _: () = msg_send![text, release];
         }
         let inset = objc2_core_foundation::CGSize::new(8.0, 10.0);
         let _: () = msg_send![text_view, setTextContainerInset: inset];
