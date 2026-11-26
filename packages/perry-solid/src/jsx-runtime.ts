@@ -56,6 +56,11 @@ export namespace JSX {
    */
   interface TextProps extends Common, Clickable {
     children?: Element;
+    /**
+     * Natively only `color`, as hex, `rgb()` or `rgba()`. It's fixed, so it doesn't follow dark
+     * mode as the system's text colour does.
+     */
+    style?: { color?: string };
   }
   /** Natively a VStack; on the web a flex column with the stacks' gap. */
   interface BlockProps extends Common, Clickable {

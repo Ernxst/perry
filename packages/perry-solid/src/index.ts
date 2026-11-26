@@ -107,6 +107,33 @@ function markText(text: Widget): void {
   textSetColor(text, 0, 0, 0, 1);
 }
 
+// A CSS colour as hex (#rgb, #rgba, #rrggbb or #rrggbbaa), rgb() or rgba(), with channels from 0 to 1.
+function parseColour(css: string): [number, number, number, number] {
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(css.trim());
+  if (hex) {
+    const digits = hex[1].length <= 4 ? [...hex[1]].map(digit => digit + digit) : hex[1].match(/../g)!;
+    const [r, g, b, a = 255] = digits.map(pair => parseInt(pair, 16));
+    return [r / 255, g / 255, b / 255, a / 255];
+  }
+  const rgb = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i.exec(css.trim());
+  if (rgb) {
+    const alpha = rgb[4] === undefined ? 1 : rgb[4].endsWith("%") ? parseFloat(rgb[4]) / 100 : parseFloat(rgb[4]);
+    return [Number(rgb[1]) / 255, Number(rgb[2]) / 255, Number(rgb[3]) / 255, alpha];
+  }
+  throw new Error(`color "${css}" is unsupported natively; use hex, rgb() or rgba()`);
+}
+
+function setStyle(widget: Widget, kind: string, style: unknown): void {
+  if (style == null) return;
+  if (typeof style !== "object") throw new Error("style must be an object natively");
+  for (const [name, value] of Object.entries(style)) {
+    if (name !== "color" || (kind !== "Text" && kind !== "RichText")) throw new Error(`style.${name} is unsupported on ${kind}`);
+    if (value == null) continue;
+    const [r, g, b, a] = parseColour(String(value));
+    textSetColor(widget, r, g, b, a);
+  }
+}
+
 function numeric(value: unknown, fallback: number): number {
   if (value == null) return fallback;
   if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("Expected a finite native widget value");
@@ -917,6 +944,7 @@ const driver: NativeDriver = {
         // The system opens every link in the default browser.
         if (!links.has(handle)) throw new Error(`target is unsupported on ${kind}`);
         return;
+      case "style": return setStyle(widget, kind, value);
       case "backgroundColor": {
         const color = value == null ? [0, 0, 0, 0] : value;
         if (!Array.isArray(color) || color.length !== 4) throw new Error("backgroundColor expects [r, g, b, a]");
