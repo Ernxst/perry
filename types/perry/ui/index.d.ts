@@ -966,6 +966,13 @@ export function widgetSetMaxWidthAlignment(widget: Widget, alignment: number): v
  * its size at 0, 0. macOS only.
  */
 export function widgetGetFrame(widget: Widget, part: 0 | 1 | 2 | 3): number;
+/**
+ * Call back with the widget's width and height in points once its size is known and
+ * whenever it changes, after layout finishes. Replaces any earlier callback. macOS only.
+ */
+export function widgetSetOnResize(widget: Widget, callback: (width: number, height: number) => void): void;
+/** Stop calling the widget's `widgetSetOnResize` callback. macOS only. */
+export function widgetClearOnResize(widget: Widget): void;
 export function widgetSetHeight(widget: Widget, height: number): void;
 export function widgetSetHugging(widget: Widget, priority: number): void;
 export function widgetSetHidden(widget: Widget, hidden: number): void;

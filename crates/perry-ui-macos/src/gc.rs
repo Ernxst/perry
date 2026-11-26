@@ -37,6 +37,7 @@ fn scan_roots(visitor: &mut GcRootVisitor<'_>) {
     crate::widgets::lazyvstack::scan_macos_lazyvstack_gc_roots(visitor);
     crate::widgets::scan_macos_widgets_gc_roots(visitor);
     crate::widgets::picker::scan_macos_picker_gc_roots(visitor);
+    crate::widgets::scan_macos_resize_gc_roots(visitor);
     crate::widgets::rich_text::scan_macos_rich_text_gc_roots(visitor);
     crate::widgets::scrollview::scan_macos_scrollview_gc_roots(visitor);
     crate::widgets::securefield::scan_macos_securefield_gc_roots(visitor);

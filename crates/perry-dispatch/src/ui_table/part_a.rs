@@ -599,6 +599,18 @@ pub(crate) const PERRY_UI_TABLE_PART_A: &[MethodRow] = &[
         args: &[ArgKind::Widget, ArgKind::F64],
         ret: ReturnKind::F64,
     },
+    MethodRow {
+        method: "widgetSetOnResize",
+        runtime: "perry_ui_widget_set_on_resize",
+        args: &[ArgKind::Widget, ArgKind::Closure],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
+        method: "widgetClearOnResize",
+        runtime: "perry_ui_widget_clear_on_resize",
+        args: &[ArgKind::Widget],
+        ret: ReturnKind::Void,
+    },
     // ---- Image ----
     MethodRow {
         method: "ImageFile",

@@ -565,6 +565,18 @@ pub extern "C" fn perry_ui_widget_get_frame(handle: i64, part: f64) -> f64 {
     widgets::frame_part(handle, part)
 }
 
+/// Call back with a widget's `(width, height)` now and whenever it changes.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_set_on_resize(handle: i64, callback: f64) {
+    widgets::set_on_resize(handle, callback);
+}
+
+/// Stop calling a widget's resize callback.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_clear_on_resize(handle: i64) {
+    widgets::clear_on_resize(handle);
+}
+
 /// Set a fixed height constraint on a widget.
 #[no_mangle]
 pub extern "C" fn perry_ui_widget_set_height(handle: i64, height: f64) {
