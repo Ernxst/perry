@@ -42,33 +42,32 @@ define_class!(
         fn text_did_change(&self, notification: &NSNotification) {
             let key = self.ivars().callback_key.get();
             crate::catch_callback_panic("textarea callback", std::panic::AssertUnwindSafe(|| {
-                TEXTAREA_CALLBACKS.with(|cbs| {
-                    if let Some(&(closure_f64, tv_ptr)) = cbs.borrow().get(&key) {
-                        if tv_ptr.is_null() { return; }
+                let entry = TEXTAREA_CALLBACKS.with(|cbs| cbs.borrow().get(&key).copied());
+                if let Some((closure_f64, tv_ptr)) = entry {
+                    if tv_ptr.is_null() { return; }
 
-                        let notif_obj = notification.object();
-                        if let Some(obj) = notif_obj {
-                            let obj_ptr = &*obj as *const AnyObject;
-                            if obj_ptr != tv_ptr { return; }
-                        } else {
-                            return;
-                        }
-
-                        // Get the text from NSTextView via its NSTextStorage
-                        let text: Retained<AnyObject> = unsafe { msg_send![tv_ptr, string] };
-                        let rust_str: Retained<NSString> = unsafe { Retained::cast_unchecked(text) };
-                        let s = rust_str.to_string();
-                        let bytes = s.as_bytes();
-
-                        let str_ptr = unsafe { js_string_from_bytes(bytes.as_ptr(), bytes.len() as u32) };
-                        let nanboxed = unsafe { js_nanbox_string(str_ptr as i64) };
-
-                        let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
-                        unsafe {
-                            js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, nanboxed);
-                        }
+                    let notif_obj = notification.object();
+                    if let Some(obj) = notif_obj {
+                        let obj_ptr = &*obj as *const AnyObject;
+                        if obj_ptr != tv_ptr { return; }
+                    } else {
+                        return;
                     }
-                });
+
+                    // Get the text from NSTextView via its NSTextStorage
+                    let text: Retained<AnyObject> = unsafe { msg_send![tv_ptr, string] };
+                    let rust_str: Retained<NSString> = unsafe { Retained::cast_unchecked(text) };
+                    let s = rust_str.to_string();
+                    let bytes = s.as_bytes();
+
+                    let str_ptr = unsafe { js_string_from_bytes(bytes.as_ptr(), bytes.len() as u32) };
+                    let nanboxed = unsafe { js_nanbox_string(str_ptr as i64) };
+
+                    let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
+                    unsafe {
+                        js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, nanboxed);
+                    }
+                }
             }));
         }
     }

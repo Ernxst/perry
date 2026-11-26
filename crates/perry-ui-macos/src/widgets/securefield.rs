@@ -43,36 +43,35 @@ define_class!(
         fn text_did_change(&self, notification: &NSNotification) {
             let key = self.ivars().callback_key.get();
             crate::catch_callback_panic("securefield callback", std::panic::AssertUnwindSafe(|| {
-                SECUREFIELD_CALLBACKS.with(|cbs| {
-                    if let Some(&(closure_f64, tf_ptr)) = cbs.borrow().get(&key) {
-                        if tf_ptr.is_null() {
-                            return;
-                        }
-
-                        let notif_obj = notification.object();
-                        if let Some(obj) = notif_obj {
-                            let obj_ptr = &*obj as *const AnyObject;
-                            if obj_ptr != tf_ptr {
-                                return;
-                            }
-                        } else {
-                            return;
-                        }
-
-                        let text_field = tf_ptr as *const NSTextField;
-                        let text: Retained<NSString> = unsafe { (*text_field).stringValue() };
-                        let rust_str = text.to_string();
-                        let bytes = rust_str.as_bytes();
-
-                        let str_ptr = unsafe { js_string_from_bytes(bytes.as_ptr(), bytes.len() as u32) };
-                        let nanboxed = unsafe { js_nanbox_string(str_ptr as i64) };
-
-                        let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
-                        unsafe {
-                            js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, nanboxed);
-                        }
+                let entry = SECUREFIELD_CALLBACKS.with(|cbs| cbs.borrow().get(&key).copied());
+                if let Some((closure_f64, tf_ptr)) = entry {
+                    if tf_ptr.is_null() {
+                        return;
                     }
-                });
+
+                    let notif_obj = notification.object();
+                    if let Some(obj) = notif_obj {
+                        let obj_ptr = &*obj as *const AnyObject;
+                        if obj_ptr != tf_ptr {
+                            return;
+                        }
+                    } else {
+                        return;
+                    }
+
+                    let text_field = tf_ptr as *const NSTextField;
+                    let text: Retained<NSString> = unsafe { (*text_field).stringValue() };
+                    let rust_str = text.to_string();
+                    let bytes = rust_str.as_bytes();
+
+                    let str_ptr = unsafe { js_string_from_bytes(bytes.as_ptr(), bytes.len() as u32) };
+                    let nanboxed = unsafe { js_nanbox_string(str_ptr as i64) };
+
+                    let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
+                    unsafe {
+                        js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, nanboxed);
+                    }
+                }
             }));
         }
     }

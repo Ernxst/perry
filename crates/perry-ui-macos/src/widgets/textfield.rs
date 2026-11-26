@@ -84,50 +84,49 @@ define_class!(
         fn text_did_change(&self, notification: &NSNotification) {
             let key = self.ivars().callback_key.get();
             crate::catch_callback_panic("textfield callback", std::panic::AssertUnwindSafe(|| {
-                TEXTFIELD_CALLBACKS.with(|cbs| {
-                    if let Some(&(closure_f64, tf_ptr, tf_handle)) = cbs.borrow().get(&key) {
-                        if tf_ptr.is_null() {
-                            return;
-                        }
-
-                        let notif_obj = notification.object();
-                        if let Some(obj) = notif_obj {
-                            let obj_ptr = &*obj as *const AnyObject;
-                            if obj_ptr != tf_ptr {
-                                return;
-                            }
-                        } else {
-                            return;
-                        }
-
-                        let text_field = tf_ptr as *const NSTextField;
-                        let text: Retained<NSString> = unsafe { (*text_field).stringValue() };
-                        let rust_str = text.to_string();
-                        let bytes = rust_str.as_bytes();
-
-                        let str_ptr = unsafe { js_string_from_bytes(bytes.as_ptr(), bytes.len() as u32) };
-                        let nanboxed = unsafe { js_nanbox_string(str_ptr as i64) };
-
-                        let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
-
-                        // If this textfield is bound to a state cell via
-                        // `stateBindTextfield`, set the binding's suppress flag
-                        // around the user closure so any `state.set` inside it
-                        // doesn't echo back to setStringValue and reset the
-                        // user's cursor / selection. See #1198.
-                        let binding = crate::state::TEXTFIELD_TO_BINDING
-                            .with(|m| m.borrow().get(&tf_handle).cloned());
-                        if let Some(ref b) = binding {
-                            b.suppress.set(true);
-                        }
-                        unsafe {
-                            js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, nanboxed);
-                        }
-                        if let Some(b) = binding {
-                            b.suppress.set(false);
-                        }
+                let entry = TEXTFIELD_CALLBACKS.with(|cbs| cbs.borrow().get(&key).copied());
+                if let Some((closure_f64, tf_ptr, tf_handle)) = entry {
+                    if tf_ptr.is_null() {
+                        return;
                     }
-                });
+
+                    let notif_obj = notification.object();
+                    if let Some(obj) = notif_obj {
+                        let obj_ptr = &*obj as *const AnyObject;
+                        if obj_ptr != tf_ptr {
+                            return;
+                        }
+                    } else {
+                        return;
+                    }
+
+                    let text_field = tf_ptr as *const NSTextField;
+                    let text: Retained<NSString> = unsafe { (*text_field).stringValue() };
+                    let rust_str = text.to_string();
+                    let bytes = rust_str.as_bytes();
+
+                    let str_ptr = unsafe { js_string_from_bytes(bytes.as_ptr(), bytes.len() as u32) };
+                    let nanboxed = unsafe { js_nanbox_string(str_ptr as i64) };
+
+                    let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
+
+                    // If this textfield is bound to a state cell via
+                    // `stateBindTextfield`, set the binding's suppress flag
+                    // around the user closure so any `state.set` inside it
+                    // doesn't echo back to setStringValue and reset the
+                    // user's cursor / selection. See #1198.
+                    let binding = crate::state::TEXTFIELD_TO_BINDING
+                        .with(|m| m.borrow().get(&tf_handle).cloned());
+                    if let Some(ref b) = binding {
+                        b.suppress.set(true);
+                    }
+                    unsafe {
+                        js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, nanboxed);
+                    }
+                    if let Some(b) = binding {
+                        b.suppress.set(false);
+                    }
+                }
             }));
         }
     }
@@ -158,37 +157,36 @@ define_class!(
         fn text_did_end_editing(&self, notification: &NSNotification) {
             let key = self.ivars().callback_key.get();
             crate::catch_callback_panic("textfield submit callback", std::panic::AssertUnwindSafe(|| {
-                TEXTFIELD_SUBMIT_CALLBACKS.with(|cbs| {
-                    if let Some(&(closure_f64, tf_ptr)) = cbs.borrow().get(&key) {
-                        if tf_ptr.is_null() {
-                            return;
-                        }
-
-                        let notif_obj = notification.object();
-                        if let Some(obj) = notif_obj {
-                            let obj_ptr = &*obj as *const AnyObject;
-                            if obj_ptr != tf_ptr {
-                                return;
-                            }
-                        } else {
-                            return;
-                        }
-
-                        // Read current text value
-                        let text_field = tf_ptr as *const NSTextField;
-                        let text: Retained<NSString> = unsafe { (*text_field).stringValue() };
-                        let rust_str = text.to_string();
-                        let bytes = rust_str.as_bytes();
-
-                        let str_ptr = unsafe { js_string_from_bytes(bytes.as_ptr(), bytes.len() as u32) };
-                        let nanboxed = unsafe { js_nanbox_string(str_ptr as i64) };
-
-                        let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
-                        unsafe {
-                            js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, nanboxed);
-                        }
+                let entry = TEXTFIELD_SUBMIT_CALLBACKS.with(|cbs| cbs.borrow().get(&key).copied());
+                if let Some((closure_f64, tf_ptr)) = entry {
+                    if tf_ptr.is_null() {
+                        return;
                     }
-                });
+
+                    let notif_obj = notification.object();
+                    if let Some(obj) = notif_obj {
+                        let obj_ptr = &*obj as *const AnyObject;
+                        if obj_ptr != tf_ptr {
+                            return;
+                        }
+                    } else {
+                        return;
+                    }
+
+                    // Read current text value
+                    let text_field = tf_ptr as *const NSTextField;
+                    let text: Retained<NSString> = unsafe { (*text_field).stringValue() };
+                    let rust_str = text.to_string();
+                    let bytes = rust_str.as_bytes();
+
+                    let str_ptr = unsafe { js_string_from_bytes(bytes.as_ptr(), bytes.len() as u32) };
+                    let nanboxed = unsafe { js_nanbox_string(str_ptr as i64) };
+
+                    let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
+                    unsafe {
+                        js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, nanboxed);
+                    }
+                }
             }));
         }
     }
@@ -497,20 +495,19 @@ define_class!(
         fn text_did_begin_editing(&self, notification: &NSNotification) {
             let key = self.ivars().callback_key.get();
             crate::catch_callback_panic("textfield focus callback", std::panic::AssertUnwindSafe(|| {
-                TEXTFIELD_FOCUS_CALLBACKS.with(|cbs| {
-                    if let Some(&(closure_f64, tf_ptr)) = cbs.borrow().get(&key) {
-                        if tf_ptr.is_null() { return; }
-                        let notif_obj = notification.object();
-                        if let Some(obj) = notif_obj {
-                            let obj_ptr = &*obj as *const AnyObject;
-                            if obj_ptr != tf_ptr { return; }
-                        } else { return; }
-                        let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
-                        unsafe {
-                            js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, 0.0);
-                        }
+                let entry = TEXTFIELD_FOCUS_CALLBACKS.with(|cbs| cbs.borrow().get(&key).copied());
+                if let Some((closure_f64, tf_ptr)) = entry {
+                    if tf_ptr.is_null() { return; }
+                    let notif_obj = notification.object();
+                    if let Some(obj) = notif_obj {
+                        let obj_ptr = &*obj as *const AnyObject;
+                        if obj_ptr != tf_ptr { return; }
+                    } else { return; }
+                    let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
+                    unsafe {
+                        js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, 0.0);
                     }
-                });
+                }
             }));
         }
     }
