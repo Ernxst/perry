@@ -1423,6 +1423,35 @@ objc2::define_class!(
                 }
             }));
         }
+
+        /// A click on a control inside the view is the control's: without this, the recognizer
+        /// holds the mouse-down and the control never sees it.
+        #[unsafe(method(gestureRecognizer:shouldAttemptToRecognizeWithEvent:))]
+        fn should_attempt(&self, recognizer: &AnyObject, event: &AnyObject) -> objc2::runtime::Bool {
+            unsafe {
+                let view: *mut AnyObject = objc2::msg_send![recognizer, view];
+                if view.is_null() {
+                    return objc2::runtime::Bool::YES;
+                }
+                let superview: *mut AnyObject = objc2::msg_send![view, superview];
+                let location: objc2_core_foundation::CGPoint = objc2::msg_send![event, locationInWindow];
+                let point: objc2_core_foundation::CGPoint = if superview.is_null() {
+                    location
+                } else {
+                    objc2::msg_send![superview, convertPoint: location, fromView: std::ptr::null::<AnyObject>()]
+                };
+                let mut hit: *mut AnyObject = objc2::msg_send![view, hitTest: point];
+                let control = AnyClass::get(c"NSControl").unwrap();
+                while !hit.is_null() && hit != view {
+                    let is_control: bool = objc2::msg_send![hit, isKindOfClass: control];
+                    if is_control {
+                        return objc2::runtime::Bool::NO;
+                    }
+                    hit = objc2::msg_send![hit, superview];
+                }
+                objc2::runtime::Bool::YES
+            }
+        }
     }
 );
 
@@ -1457,6 +1486,7 @@ pub fn set_on_click(handle: i64, callback: f64) {
                 recognizer, initWithTarget: &*target, action: sel
             ];
             let _: () = objc2::msg_send![recognizer, setNumberOfClicksRequired: 1i64];
+            let _: () = objc2::msg_send![recognizer, setDelegate: &*target];
             let _: () = objc2::msg_send![&*view, addGestureRecognizer: recognizer];
 
             // Leak target to keep it alive
