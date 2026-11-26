@@ -9,7 +9,7 @@ import {
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
-  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetHugging, stackSetAlignment, stackSetDistribution,
+  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetMatchParentWidth, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
   currentModifiers, type State, type Widget,
@@ -48,6 +48,11 @@ const CHARACTER_WIDTH = 8;
 const FIELD_INSET = 12;
 const TEXTAREA_HEIGHT = 60;
 const PROGRESS_WIDTH = 150;
+// A flexbox column stretches a control to its width, ignoring its size, but a checkbox or date
+// field keeps its own. A row leaves every control at its own width.
+const FIXED = new Set(["checkbox", "date"]);
+const inColumn = new Set<number>();
+const stretched = new Set<number>();
 const PROGRESS_HEIGHT = 6;
 const SPINNER_SIZE = 16;
 // The web's default iframe size.
@@ -355,6 +360,14 @@ function createControl(control: Control): Widget {
   }
 }
 
+// The wrapper fills its column in a slot, and the control is pinned to the wrapper's width.
+function stretch(control: Control, inner: Widget): void {
+  if (stretched.has(inner)) return;
+  stretched.add(inner);
+  widgetSetMaxWidth(control.wrapper, 1e6);
+  widgetMatchParentWidth(inner);
+}
+
 function applyControl(control: Control): void {
   const inner = control.inner as Widget;
   const props = control.props;
@@ -386,7 +399,8 @@ function applyControl(control: Control): void {
   widgetSetHidden(control.wrapper, props.hidden ? 1 : 0);
   if (props.title != null) widgetSetTooltip(inner, String(props.title));
   const size = Number(props.size);
-  if (WIDTHS[type]) widgetSetWidth(inner, size > 0 && type !== "range" && type !== "date" ? size * CHARACTER_WIDTH + FIELD_INSET : WIDTHS[type]);
+  if (inColumn.has(control.wrapper) && !FIXED.has(type)) stretch(control, inner);
+  else if (WIDTHS[type]) widgetSetWidth(inner, size > 0 && type !== "range" && type !== "date" ? size * CHARACTER_WIDTH + FIELD_INSET : WIDTHS[type]);
   if (type === "textarea") widgetSetHeight(inner, TEXTAREA_HEIGHT);
 }
 
@@ -1013,6 +1027,11 @@ const driver: NativeDriver = {
     }
     widgetAddChildAt(parent as Widget, child as Widget, index);
     if (columns.has(parent) && slotted.has(child)) widgetSetMaxWidth(child as Widget, 1e6);
+    const control = controls.get(child);
+    if (control && columns.has(parent)) {
+      inColumn.add(child);
+      if (control.inner !== 0) applyControl(control);
+    }
     countSpacer(parent, child, 1);
   },
   move(parent, from, to) {
