@@ -16,7 +16,7 @@ import {
 } from "perry/ui";
 import { openURL } from "perry/system";
 import { CanvasElement } from "perry-browser";
-import { createNativeRenderer, type ControlState, type NativeDriver, type Props, type TextRun } from "./renderer.ts";
+import { createNativeRenderer, type ControlState, type Emit, type NativeDriver, type Props, type TextRun } from "./renderer.ts";
 import type { JSX } from "./jsx-runtime.ts";
 import type { StackProps } from "./types.ts";
 export type { NativeNode, Child, Component, Props, ElementName } from "./renderer.ts";
@@ -688,21 +688,22 @@ function setOptionProperty(option: Option, name: string, value: unknown): void {
   if (option.picker !== 0) schedule(controls.get(option.picker)!);
 }
 
-function makeLink(text: Widget): void {
+// The click goes to onClick first, and the link opens only if the handler didn't prevent it.
+function makeLink(text: Widget, emit: Emit): void {
   links.set(text, "");
   setTextColour(text, "accent");
   addClick(text, () => {
     const href = links.get(text);
-    if (href) openURL(href);
+    if (emit("onClick", { value: "", checked: false }) && href) openURL(href);
   });
 }
 
-function createRichText(tag: string): Widget {
+function createRichText(tag: string, emit: Emit): Widget {
   const text = AttributedText();
   richTexts.set(text, tag);
   if (tag === "mark") markText(text);
   else slotted.add(text);
-  if (tag === "a") makeLink(text);
+  if (tag === "a") makeLink(text, emit);
   if (tag === "summary") summaries.add(text);
   return text;
 }
@@ -767,9 +768,9 @@ const driver: NativeDriver = {
         bodies.set(scroll, content);
         return scroll;
       }
-      case "RichText": return createRichText(tag);
+      case "RichText": return createRichText(tag, emit);
       case "Text": {
-        if (ITALIC.has(tag)) return createRichText(tag);
+        if (ITALIC.has(tag)) return createRichText(tag, emit);
         const text = Text("");
         // In the slot, text is as wide as its column, which would stretch a mark's background.
         if (tag !== "mark") slotted.add(text);
@@ -781,7 +782,7 @@ const driver: NativeDriver = {
         else if (MONOSPACED.has(tag)) textSetFontFamily(text, "monospaced");
         else if (tag === "mark") markText(text);
         if (DECORATIONS[tag]) decorations.set(text, DECORATIONS[tag]);
-        if (tag === "a") makeLink(text);
+        if (tag === "a") makeLink(text, emit);
         if (tag === "summary") summaries.add(text);
         return text;
       }
@@ -1005,7 +1006,7 @@ const driver: NativeDriver = {
   // An element takes clicks only once it has a handler, so one without a handler leaves them to
   // the element around it. A button and the controls report their own events.
   listen(handle, kind, handler, emit) {
-    if (handler !== "onClick" || listening.has(handle) || kind === "Button" || controls.has(handle) || options.has(handle)) return;
+    if (handler !== "onClick" || listening.has(handle) || links.has(handle) || kind === "Button" || controls.has(handle) || options.has(handle)) return;
     listening.add(handle);
     addClick(handle as Widget, () => emit("onClick", { value: "", checked: false }));
   },

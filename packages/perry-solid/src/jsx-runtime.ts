@@ -35,8 +35,10 @@ export namespace JSX {
     [aria: `aria-${string}`]: string | number | boolean | undefined;
   }
   /**
-   * Natively the event is only `currentTarget` and `target`, both the element, with no pointer
-   * position or modifier keys. A text element inside another text gets no clicks of its own. Only
+   * Natively the event is a plain left click with no pointer position: `button` is 0, the modifier
+   * keys are false, and `currentTarget` and `target` are both the element, whose `getAttribute`
+   * reads its props. `preventDefault()` stops a link from opening its `href`. A text element inside
+   * another text gets no clicks of its own. Only
    * the innermost element with a handler gets a click, and while any element around a button or
    * other control has a handler, clicking the control fires that handler instead.
    *

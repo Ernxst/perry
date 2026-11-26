@@ -29,6 +29,9 @@ export const For = SolidFor as <T>(props: {
   children: (item: T, index: Accessor<number>) => JSX.Element;
 }) => JSX.Element;
 
+/** Calls the element's handler for an event; false when the handler called `preventDefault`. */
+export type Emit = (handler: string, state: ControlState) => boolean;
+
 /** Backend operations. Handles belong to the native widget registry. */
 export interface NativeDriver {
   /**
@@ -36,7 +39,7 @@ export interface NativeDriver {
    * A text element is created as `RichText` while it holds other text elements; its content then
    * arrives as a `runs` property, a `TextRun[]`, instead of `text`.
    */
-  create(kind: ElementName, tag: string, emit: (handler: string, state: ControlState) => void): number;
+  create(kind: ElementName, tag: string, emit: Emit): number;
   setProperty(handle: number, kind: ElementName, name: string, value: unknown, previous: unknown): void;
   insert(parent: number, child: number, index: number, previousParent: number | null): void;
   move(parent: number, from: number, to: number): void;
@@ -51,7 +54,7 @@ export interface NativeDriver {
    * Called when an element's widget exists and it has a handler, such as `onClick`, for widgets
    * that fire it only once asked. `emit` calls the handler, as `create`'s does.
    */
-  listen?(handle: number, kind: ElementName, handler: string, emit: (handler: string, state: ControlState) => void): void;
+  listen?(handle: number, kind: ElementName, handler: string, emit: Emit): void;
 }
 
 /** Retained ordering metadata; native handles themselves have no sibling API. */
@@ -125,11 +128,26 @@ export function createNativeRenderer(driver: NativeDriver) {
     return { kind, tag, handle: 0, materialized: false, parent: null, nodes: [], props: {}, text };
   }
 
-  function emitter(node: NativeNode) {
-    return (handler: string, state: ControlState) => {
+  // A click is a plain left click, so code that skips modified or other-button clicks, as a
+  // router link does, sees one it handles.
+  function emitter(node: NativeNode): Emit {
+    return (handler, state) => {
       const callback = node.props[handler];
-      if (typeof callback === "function") callback({ currentTarget: state, target: state });
+      const target = { ...state, getAttribute: (name: string) => node.props[name] == null ? null : String(node.props[name]) };
+      const event = {
+        currentTarget: target,
+        target,
+        button: 0,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        defaultPrevented: false,
+        preventDefault() { event.defaultPrevented = true; },
+      };
+      if (typeof callback === "function") callback(event);
       if (handler === "onClick" && node.kind === "Button" && node.props.type !== "button") submit(node);
+      return !event.defaultPrevented;
     };
   }
 
@@ -164,7 +182,7 @@ export function createNativeRenderer(driver: NativeDriver) {
     // Text under a Text/Button contributes to its label. Allocate an independent
     // native Text only when the text node is actually inserted into a container.
     if (node.kind === "#text" && !node.materialized) {
-      node.handle = driver.create("Text", "span", () => {});
+      node.handle = driver.create("Text", "span", () => true);
       node.materialized = true;
       driver.setProperty(node.handle, "Text", "text", node.text, undefined);
     }
