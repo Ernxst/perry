@@ -1231,6 +1231,12 @@ export function widgetSetShadow(
     blur: number, offsetX: number, offsetY: number
 ): void;
 export function widgetSetContextMenu(widget: Widget, menu: Widget): void;
+/**
+ * Open `menu` with its top left at the widget's bottom left, as a pop-up
+ * button's menu drops down. It opens once the current event's handlers have
+ * returned. macOS only.
+ */
+export function menuPopUpBelow(menu: Widget, widget: Widget): void;
 export function widgetAddOverlay(widget: Widget, overlay: Widget): void;
 export function widgetSetOverlayFrame(widget: Widget, x: number, y: number, width: number, height: number): void;
 export function widgetSetOnClick(widget: Widget, callback: () => void): void;

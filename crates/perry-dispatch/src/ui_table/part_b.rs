@@ -317,6 +317,12 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::Void,
     },
     MethodRow {
+        method: "menuPopUpBelow",
+        runtime: "perry_ui_menu_pop_up_below",
+        args: &[ArgKind::Widget, ArgKind::Widget],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "widgetSetContextMenu",
         runtime: "perry_ui_widget_set_context_menu",
         args: &[ArgKind::Widget, ArgKind::Widget],

@@ -351,6 +351,46 @@ pub fn set_context_menu(widget_handle: i64, menu_handle: i64) {
     }
 }
 
+/// Open the menu with its top left at the widget's bottom left, once the
+/// current event's handlers have returned, since the menu tracks the mouse
+/// in a nested run loop until it closes.
+pub fn pop_up_below(menu_handle: i64, widget_handle: i64) {
+    extern "C" {
+        static _dispatch_main_q: std::ffi::c_void;
+        fn dispatch_async_f(
+            queue: *const std::ffi::c_void,
+            context: *mut std::ffi::c_void,
+            work: unsafe extern "C" fn(*mut std::ffi::c_void),
+        );
+    }
+    unsafe extern "C" fn open(context: *mut std::ffi::c_void) {
+        let (menu_handle, widget_handle) = *Box::from_raw(context as *mut (i64, i64));
+        let (Some(menu), Some(view)) = (get_menu(menu_handle), crate::widgets::get_widget(widget_handle)) else {
+            return;
+        };
+        let bounds = view.bounds();
+        let y = if view.isFlipped() {
+            bounds.origin.y + bounds.size.height
+        } else {
+            bounds.origin.y
+        };
+        let at = objc2_core_foundation::CGPoint::new(bounds.origin.x, y);
+        let _: bool = msg_send![
+            &*menu,
+            popUpMenuPositioningItem: std::ptr::null::<NSMenuItem>(),
+            atLocation: at,
+            inView: &*view
+        ];
+    }
+    unsafe {
+        dispatch_async_f(
+            &_dispatch_main_q as *const _ as *const std::ffi::c_void,
+            Box::into_raw(Box::new((menu_handle, widget_handle))) as *mut std::ffi::c_void,
+            open,
+        );
+    }
+}
+
 /// Parse a shortcut string like "Cmd+Shift+N" into (key, NSEventModifierFlags).
 /// If only a key is given (e.g. "n"), defaults to Cmd modifier.
 /// Uppercase single char (e.g. "S") means Cmd+Shift.

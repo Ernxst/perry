@@ -70,6 +70,12 @@ pub extern "C" fn perry_ui_widget_set_context_menu(widget_handle: i64, menu_hand
     menu::set_context_menu(widget_handle, menu_handle);
 }
 
+/// Open a menu below a widget.
+#[no_mangle]
+pub extern "C" fn perry_ui_menu_pop_up_below(menu_handle: i64, widget_handle: i64) {
+    menu::pop_up_below(menu_handle, widget_handle);
+}
+
 /// Add a menu item with a keyboard shortcut.
 #[no_mangle]
 pub extern "C" fn perry_ui_menu_add_item_with_shortcut(
