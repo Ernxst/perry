@@ -444,6 +444,36 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::I64AsF64,
     },
     MethodRow {
+        method: "SegmentedControl",
+        runtime: "perry_ui_segmented_control_create",
+        args: &[ArgKind::Closure],
+        ret: ReturnKind::Widget,
+    },
+    MethodRow {
+        method: "segmentedControlAddSegment",
+        runtime: "perry_ui_segmented_control_add_segment",
+        args: &[ArgKind::Widget, ArgKind::Str],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
+        method: "segmentedControlRemoveAll",
+        runtime: "perry_ui_segmented_control_remove_all",
+        args: &[ArgKind::Widget],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
+        method: "segmentedControlSetSelected",
+        runtime: "perry_ui_segmented_control_set_selected",
+        args: &[ArgKind::Widget, ArgKind::I64Raw],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
+        method: "segmentedControlSetSegmentEnabled",
+        runtime: "perry_ui_segmented_control_set_segment_enabled",
+        args: &[ArgKind::Widget, ArgKind::I64Raw, ArgKind::I64Raw],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "pickerSetSelected",
         runtime: "perry_ui_picker_set_selected",
         args: &[ArgKind::Widget, ArgKind::I64Raw],

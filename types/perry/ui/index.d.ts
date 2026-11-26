@@ -569,6 +569,20 @@ export function cancelFrame(id: number): void;
 export function Picker(onChange: (index: number) => void): Widget;
 
 /**
+ * A row of segments, one selected at a time, called with the index the user
+ * selects. Setting the selection from code doesn't call it. macOS only.
+ */
+export function SegmentedControl(onChange: (index: number) => void): Widget;
+/** Append a segment labelled `title`. macOS only. */
+export function segmentedControlAddSegment(control: Widget, title: string): void;
+/** Remove every segment. macOS only. */
+export function segmentedControlRemoveAll(control: Widget): void;
+/** Select the segment at `index`, or none for -1. macOS only. */
+export function segmentedControlSetSelected(control: Widget, index: number): void;
+/** Enable (1) or disable (0) the segment at `index`. macOS only. */
+export function segmentedControlSetSegmentEnabled(control: Widget, index: number, enabled: number): void;
+
+/**
  * Wheel-style picker for long sequential lists. Uses the native spinning
  * selector on iOS and Android and a scrollable selection control elsewhere.
  */

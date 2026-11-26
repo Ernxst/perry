@@ -92,6 +92,36 @@ pub extern "C" fn perry_ui_picker_set_selected(handle: i64, index: i64) {
     widgets::picker::set_selected(handle, index);
 }
 
+/// Create a SegmentedControl that calls `on_change` with the index the user selects.
+#[no_mangle]
+pub extern "C" fn perry_ui_segmented_control_create(on_change: f64) -> i64 {
+    widgets::segmented::create(on_change)
+}
+
+/// Append a segment to a SegmentedControl.
+#[no_mangle]
+pub extern "C" fn perry_ui_segmented_control_add_segment(handle: i64, title_ptr: i64) {
+    widgets::segmented::add_segment(handle, title_ptr as *const u8);
+}
+
+/// Remove every segment from a SegmentedControl.
+#[no_mangle]
+pub extern "C" fn perry_ui_segmented_control_remove_all(handle: i64) {
+    widgets::segmented::remove_all(handle);
+}
+
+/// Select a SegmentedControl's segment, or none for an index out of range.
+#[no_mangle]
+pub extern "C" fn perry_ui_segmented_control_set_selected(handle: i64, index: i64) {
+    widgets::segmented::set_selected(handle, index);
+}
+
+/// Enable (1) or disable (0) a SegmentedControl's segment.
+#[no_mangle]
+pub extern "C" fn perry_ui_segmented_control_set_segment_enabled(handle: i64, index: i64, enabled: i64) {
+    widgets::segmented::set_segment_enabled(handle, index, enabled != 0);
+}
+
 /// Get the selected index of a Picker.
 #[no_mangle]
 pub extern "C" fn perry_ui_picker_get_selected(handle: i64) -> i64 {

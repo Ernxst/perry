@@ -28,6 +28,7 @@ pub mod navstack;
 pub(crate) mod padding;
 pub mod pdf_view;
 pub mod picker;
+pub mod segmented;
 mod resize;
 pub use resize::{clear_on_resize, set_on_resize};
 pub(crate) use resize::scan_macos_resize_gc_roots;
