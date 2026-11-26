@@ -4,7 +4,7 @@ import {
   Text, Button, Divider, BloomView, TextField, SecureField, TextArea, Toggle, Slider, Picker, DatePicker,
   Image, ImageFile, ProgressView, AttributedText, attributedTextAppend, attributedTextClear,
   textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetFontFamily, textSetColor, textSetDecoration, textSetWraps,
-  textfieldSetString, textareaSetString, toggleSetState, sliderSetStep, pickerAddItem, pickerSetSelected, datePickerSetDate,
+  textfieldSetString, textareaSetString, toggleSetState, toggleSetStyle, sliderSetStep, pickerAddItem, pickerSetSelected, datePickerSetDate,
   textfieldSetOnSubmit, WebView, webviewLoadUrl, Combobox, comboboxAddItem, comboboxSetValue,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
@@ -50,7 +50,7 @@ const TEXTAREA_HEIGHT = 60;
 const PROGRESS_WIDTH = 150;
 // A flexbox column stretches a control to its width, ignoring its size, but a checkbox or date
 // field keeps its own. A row leaves every control at its own width.
-const FIXED = new Set(["checkbox", "date"]);
+const FIXED = new Set(["checkbox", "radio", "date"]);
 const inColumn = new Set<number>();
 const stretched = new Set<number>();
 const PROGRESS_HEIGHT = 6;
@@ -275,13 +275,13 @@ interface Bar {
 const bars = new Map<number, Bar>();
 
 const REBUILDS: Record<Control["kind"], string[]> = {
-  Input: ["type", "placeholder", "min", "max", "list"],
+  Input: ["type", "placeholder", "min", "max", "list", "role"],
   TextArea: ["placeholder"],
   Picker: [],
   Datalist: ["id"],
 };
 const CONTROL_PROPS: Record<Control["kind"], string[]> = {
-  Input: ["type", "placeholder", "min", "max", "step", "size", "value", "checked", "disabled", "title", "hidden", "list"],
+  Input: ["type", "placeholder", "min", "max", "step", "size", "value", "checked", "disabled", "title", "hidden", "list", "role", "name"],
   TextArea: ["placeholder", "value", "disabled", "title", "hidden"],
   Picker: ["value", "disabled", "title", "hidden"],
   Datalist: ["id"],
@@ -293,10 +293,23 @@ function report(control: Control, state: ControlState): void {
 }
 
 function toggle(control: Control): void {
+  const radio = control.props.type === "radio";
+  if (radio && control.props.checked) return;
   const on = !control.props.checked;
   control.props.checked = on;
   toggleSetState(control.inner as Widget, on ? 1 : 0);
-  report(control, { value: "on", checked: on });
+  if (radio) uncheckGroup(control);
+  report(control, { value: String(control.props.value ?? "on"), checked: on });
+}
+
+// Checking a radio unchecks the others with its name, firing no events for them, as on the web.
+function uncheckGroup(control: Control): void {
+  if (control.props.name == null) return;
+  for (const other of controls.values()) {
+    if (other === control || other.props.type !== "radio" || other.props.name !== control.props.name || !other.props.checked) continue;
+    other.props.checked = false;
+    if (other.inner !== 0) toggleSetState(other.inner as Widget, 0);
+  }
 }
 
 function optionValue(option: Option): string {
@@ -341,10 +354,18 @@ function createControl(control: Control): Widget {
   }
   switch (props.type ?? "text") {
     case "checkbox":
-      return Toggle("", on => {
+    case "radio": {
+      const radio = props.type === "radio";
+      const box = Toggle("", on => {
+        // AppKit's radio button stays on when clicked again, and the web reports nothing then.
+        if (radio && props.checked) return;
         props.checked = on;
-        report(control, { value: "on", checked: on });
+        if (radio) uncheckGroup(control);
+        report(control, { value: String(props.value ?? "on"), checked: on });
       });
+      toggleSetStyle(box, radio ? 2 : props.role === "switch" ? 0 : 1);
+      return box;
+    }
     case "range": {
       const slider = Slider(numeric(props.min, 0), numeric(props.max, 100), value => {
         control.shown = String(value);
@@ -394,7 +415,7 @@ function applyControl(control: Control): void {
   const props = control.props;
   const type = control.kind !== "Input" ? control.kind.toLowerCase()
     : props.list != null && props.type !== "password" ? "combobox" : String(props.type ?? "text");
-  if (type === "checkbox") {
+  if (type === "checkbox" || type === "radio") {
     toggleSetState(inner, props.checked ? 1 : 0);
   } else if (type === "picker") {
     const index = control.options.findIndex(handle => optionValue(options.get(handle)!) === String(props.value));
@@ -939,7 +960,7 @@ const driver: NativeDriver = {
     }
   },
   setProperty(handle, kind, name, value) {
-    if (name === "role" || name === "tabIndex" || name === "class" || name.startsWith("aria-") || name.startsWith("data-")) return;
+    if ((name === "role" && !controls.has(handle)) || name === "tabIndex" || name === "class" || name.startsWith("aria-") || name.startsWith("data-")) return;
     const control = controls.get(handle);
     if (control) return setControlProperty(control, name, value);
     const option = options.get(handle);
@@ -1055,7 +1076,7 @@ const driver: NativeDriver = {
       else {
         if (!labelledBy.has(child)) addClick(child as Widget, () => {
           const control = controls.get(labelledBy.get(child)?.control ?? 0);
-          if (control && control.inner !== 0 && control.props.type === "checkbox") toggle(control);
+          if (control && control.inner !== 0 && (control.props.type === "checkbox" || control.props.type === "radio")) toggle(control);
         });
         labelledBy.set(child, label);
       }

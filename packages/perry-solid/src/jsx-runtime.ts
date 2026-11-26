@@ -25,7 +25,7 @@ export namespace JSX {
 
   /**
    * `role`, `tabIndex` and the `aria-*` attributes reach assistive technology on the web; natively
-   * they're accepted and have no effect.
+   * they're accepted and have no effect, except `role="switch"`, which draws a checkbox as a switch.
    */
   interface Common {
     hidden?: boolean;
@@ -196,9 +196,11 @@ export namespace JSX {
       height?: number;
     };
     input: ControlProps & {
-      type?: "text" | "password" | "search" | "email" | "url" | "tel" | "number" | "checkbox" | "range" | "date";
+      type?: "text" | "password" | "search" | "email" | "url" | "tel" | "number" | "checkbox" | "radio" | "range" | "date";
       value?: string | number;
       checked?: boolean;
+      /** Groups radios: checking one unchecks the others with its name. */
+      name?: string;
       placeholder?: string;
       min?: number;
       max?: number;
