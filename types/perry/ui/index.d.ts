@@ -1882,6 +1882,8 @@ export function toolbarAttach(toolbar: Widget, window: Widget): void;
 // ---------------------------------------------------------------------------
 
 export function clipboardRead(): string;
+/** The absolute paths of the files on the clipboard, such as files copied in Finder; empty when it holds none. */
+export function clipboardReadFiles(): string[];
 export function clipboardWrite(text: string): void;
 
 // ---------------------------------------------------------------------------

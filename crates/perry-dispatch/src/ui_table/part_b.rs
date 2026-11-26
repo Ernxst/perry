@@ -664,6 +664,12 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::F64,
     },
     MethodRow {
+        method: "clipboardReadFiles",
+        runtime: "perry_ui_clipboard_read_files",
+        args: &[],
+        ret: ReturnKind::F64,
+    },
+    MethodRow {
         method: "clipboardWrite",
         runtime: "perry_ui_clipboard_write",
         args: &[ArgKind::Str],

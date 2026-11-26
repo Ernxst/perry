@@ -313,6 +313,20 @@ unsafe fn read_file_paths(pasteboard: *mut AnyObject) -> Vec<String> {
     out
 }
 
+/// The paths of the files on the general pasteboard, as a JS array, empty
+/// when it holds no file URLs.
+pub(crate) fn clipboard_file_paths() -> f64 {
+    unsafe {
+        let pasteboard: *mut AnyObject = msg_send![AnyClass::get(c"NSPasteboard").unwrap(), generalPasteboard];
+        let files = if pasteboard.is_null() { Vec::new() } else { read_file_paths(pasteboard) };
+        let mut arr = js_array_alloc(files.len() as u32);
+        for f in &files {
+            arr = js_array_push_f64(arr, nanbox_str(f));
+        }
+        js_nanbox_pointer(arr as i64)
+    }
+}
+
 // --- source methods ----------------------------------------------------------
 
 extern "C-unwind" fn source_op_mask(

@@ -435,6 +435,12 @@ pub extern "C" fn perry_ui_clipboard_read() -> f64 {
     clipboard::read()
 }
 
+/// The paths of the files on the system clipboard, as a NaN-boxed array.
+#[no_mangle]
+pub extern "C" fn perry_ui_clipboard_read_files() -> f64 {
+    crate::drag_drop::clipboard_file_paths()
+}
+
 /// Write text to the system clipboard.
 #[no_mangle]
 pub extern "C" fn perry_ui_clipboard_write(text_ptr: i64) {
