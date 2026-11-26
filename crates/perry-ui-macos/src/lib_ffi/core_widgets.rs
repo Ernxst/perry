@@ -268,6 +268,12 @@ pub extern "C" fn perry_ui_toggle_set_state(handle: i64, on: i64) {
     widgets::toggle::set_state(handle, on);
 }
 
+/// Draw a Toggle as a switch (0), a checkbox (1) or a radio button (2).
+#[no_mangle]
+pub extern "C" fn perry_ui_toggle_set_style(handle: i64, style: f64) {
+    widgets::toggle::set_style(handle, style);
+}
+
 /// Create a Slider. min/max are f64, on_change = NaN-boxed closure.
 /// Returns widget handle. Initial value defaults to `min` (the TS
 /// surface `Slider(min, max, onChange)` doesn't expose `initial`, and

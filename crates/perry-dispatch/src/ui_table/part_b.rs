@@ -322,6 +322,12 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::Void,
     },
     MethodRow {
+        method: "toggleSetStyle",
+        runtime: "perry_ui_toggle_set_style",
+        args: &[ArgKind::Widget, ArgKind::F64],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "Slider",
         runtime: "perry_ui_slider_create",
         args: &[ArgKind::F64, ArgKind::F64, ArgKind::Closure],

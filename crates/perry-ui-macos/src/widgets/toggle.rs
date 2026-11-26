@@ -97,6 +97,51 @@ pub fn set_state(handle: i64, on: i64) {
     });
 }
 
+/// Draw a Toggle as a switch (0), a checkbox (1) or a radio button (2). A checkbox or radio
+/// button sits before the Toggle's label, as on the web, and keeps the switch's state, target,
+/// action and enabled state.
+pub fn set_style(handle: i64, style: f64) {
+    let Some(current) = switch(handle) else { return };
+    let Some(container) = super::get_widget(handle) else { return };
+    let Some(stack) = container.downcast_ref::<NSStackView>() else { return };
+    let mtm = MainThreadMarker::new().expect("perry/ui must run on the main thread");
+    let style = style as i64;
+    unsafe {
+        let next: Retained<NSView> = if style == 1 || style == 2 {
+            // NSButtonTypeSwitch is AppKit's checkbox; NSButtonTypeRadio its radio button.
+            let button_type: u64 = if style == 1 { 3 } else { 4 };
+            let button = objc2_app_kit::NSButton::new(mtm);
+            let _: () = msg_send![&*button, setButtonType: button_type];
+            button.setTitle(&NSString::from_str(""));
+            Retained::cast_unchecked(button)
+        } else {
+            Retained::cast_unchecked(NSSwitch::new(mtm))
+        };
+        let state: i64 = msg_send![&*current, state];
+        let enabled: bool = msg_send![&*current, isEnabled];
+        let target: *mut AnyObject = msg_send![&*current, target];
+        let action: Option<Sel> = msg_send![&*current, action];
+        let _: () = msg_send![&*next, setState: state];
+        let _: () = msg_send![&*next, setEnabled: enabled];
+        let _: () = msg_send![&*next, setTarget: target];
+        let _: () = msg_send![&*next, setAction: action];
+        stack.removeView(&current);
+        current.removeFromSuperview();
+        // An empty caption would still take its share of the stack's spacing beside the button.
+        for view in stack.arrangedSubviews() {
+            if let Some(label) = view.downcast_ref::<NSTextField>() {
+                label.setHidden(label.stringValue().length() == 0);
+            }
+        }
+        if style == 1 || style == 2 {
+            stack.insertArrangedSubview_atIndex(&next, 0);
+        } else {
+            stack.addArrangedSubview(&next);
+        }
+        TOGGLE_SWITCHES.with(|switches| switches.borrow_mut().insert(handle, next));
+    }
+}
+
 /// The switch inside a Toggle's container.
 pub(crate) fn switch(handle: i64) -> Option<Retained<NSView>> {
     TOGGLE_SWITCHES.with(|switches| switches.borrow().get(&handle).cloned())

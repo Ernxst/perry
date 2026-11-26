@@ -458,6 +458,13 @@ export function Toggle(label: string, onChange: (value: boolean) => void): Widge
 /** Programmatically set a Toggle's on/off state. Pass `1` for on, `0` for off. */
 export function toggleSetState(widget: Widget, on: number): void;
 
+/**
+ * Draw a Toggle as a switch (`0`, the default), a checkbox (`1`) or a radio button (`2`).
+ * A checkbox or radio button sits before the label. Radio buttons don't group: the app
+ * turns the others off. macOS only.
+ */
+export function toggleSetStyle(widget: Widget, style: number): void;
+
 /** Numeric slider. */
 export function Slider(min: number, max: number, onChange: (value: number) => void): Widget;
 /** Snap a slider to multiples of `step` from its minimum; 0 lets it slide freely. */
