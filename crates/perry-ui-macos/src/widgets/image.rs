@@ -14,6 +14,8 @@ extern "C" {
 
 thread_local! {
     static LOAD_CALLBACKS: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
+    /// Whether each `create_file` image read and decoded its file, which it does before returning.
+    static FILE_LOADED: RefCell<HashMap<i64, bool>> = RefCell::new(HashMap::new());
 }
 
 pub(crate) fn scan_macos_image_gc_roots(visitor: &mut perry_ffi::GcRootVisitor<'_>) {
@@ -24,10 +26,33 @@ pub(crate) fn scan_macos_image_gc_roots(visitor: &mut perry_ffi::GcRootVisitor<'
     });
 }
 
-/// Call `callback` once a URL image created by `create_url` has loaded, with 1, or failed to
-/// download or decode, with 0. A later call replaces the callback.
+/// Call `callback` once an image created by `create_url` or `create_file` has loaded, with 1,
+/// or failed to read, download or decode, with 0, always on a later turn of the main queue. A
+/// later call replaces the callback.
 pub fn set_on_load(handle: i64, callback: f64) {
     LOAD_CALLBACKS.with(|c| c.borrow_mut().insert(handle, callback));
+    let Some(loaded) = FILE_LOADED.with(|f| f.borrow_mut().remove(&handle)) else {
+        return;
+    };
+    extern "C" {
+        static _dispatch_main_q: std::ffi::c_void;
+        fn dispatch_async_f(
+            queue: *const std::ffi::c_void,
+            context: *mut std::ffi::c_void,
+            work: unsafe extern "C" fn(*mut std::ffi::c_void),
+        );
+    }
+    unsafe extern "C" fn report(context: *mut std::ffi::c_void) {
+        let (handle, loaded) = *Box::from_raw(context as *mut (i64, bool));
+        report_load(handle, loaded);
+    }
+    unsafe {
+        dispatch_async_f(
+            &_dispatch_main_q as *const _ as *const std::ffi::c_void,
+            Box::into_raw(Box::new((handle, loaded))) as *mut std::ffi::c_void,
+            report,
+        );
+    }
 }
 
 fn report_load(handle: i64, loaded: bool) {
@@ -146,7 +171,9 @@ pub fn create_file(path_ptr: *const u8) -> i64 {
         }
 
         let view: Retained<NSView> = Retained::cast_unchecked(image_view);
-        super::register_widget(view)
+        let handle = super::register_widget(view);
+        FILE_LOADED.with(|f| f.borrow_mut().insert(handle, !image_obj.is_null()));
+        handle
     }
 }
 
