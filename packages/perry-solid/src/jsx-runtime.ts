@@ -182,7 +182,6 @@ export namespace JSX {
     /**
      * `src` is a URL, a `data:` URL, or a path into Vite's `public/` folder, which the native build
      * copies into the app bundle. Give both `width` and `height`: natively an image stretches to fill them.
-     * Natively only a URL or `data:` URL fires `onLoad` and `onError`.
      */
     img: Common & Clickable & { src: string; alt?: string; width?: number; height?: number; onLoad?: () => void; onError?: () => void };
     /** Natively a bar drawn from stacks; without a `value` it's a spinner. */
