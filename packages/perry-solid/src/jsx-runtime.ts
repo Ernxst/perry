@@ -24,9 +24,11 @@ export namespace JSX {
   export type KeyEvent = { key: string; preventDefault(): void };
 
   /**
-   * `role`, `tabIndex` and the `aria-*` attributes reach assistive technology on the web; natively
-   * only `aria-label` does, naming the widget for VoiceOver. The rest are accepted and have no
-   * effect, except `role="switch"`, which draws a checkbox as a switch.
+   * `role`, `tabIndex` and the `aria-*` attributes reach assistive technology on the web. Natively
+   * `aria-label` names the widget for VoiceOver, `role` sets the role it announces, except on a
+   * control, and `aria-expanded`, `aria-selected`, `aria-checked` and `aria-disabled` set its
+   * state. The rest are accepted and have no effect, except `role="switch"`, which draws a
+   * checkbox as a switch.
    */
   interface Common {
     hidden?: boolean;

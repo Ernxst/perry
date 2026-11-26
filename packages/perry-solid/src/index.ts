@@ -8,7 +8,7 @@ import {
   textfieldSetOnSubmit, WebView, webviewLoadUrl, Combobox, comboboxAddItem, comboboxSetValue,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
-  widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetAccessibilityLabel, widgetSetOnClick,
+  widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetAccessibilityLabel, widgetSetAccessibilityRole, widgetSetAccessibilityState, widgetSetOnClick,
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetMaxWidthAlignment, widgetGetFrame, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
@@ -158,6 +158,15 @@ function setMaxWidth(widget: Widget, value: unknown): void {
 
 function capOf(widget: number): number {
   return maxWidths.get(widget) ?? 1e6;
+}
+
+// The ARIA states a widget can carry natively, besides its role and label.
+const ARIA_STATES = new Set(["aria-expanded", "aria-selected", "aria-checked", "aria-disabled"]);
+
+/** An ARIA state as 0 or 1, or 2 for `aria-checked="mixed"`. */
+function ariaState(value: unknown): number {
+  if (value === "mixed") return 2;
+  return value === true || value === "true" ? 1 : 0;
 }
 
 function numeric(value: unknown, fallback: number): number {
@@ -984,7 +993,9 @@ const driver: NativeDriver = {
     }
   },
   setProperty(handle, kind, name, value) {
-    if ((name === "role" && !controls.has(handle)) || name === "tabIndex" || name === "class" || (name.startsWith("aria-") && name !== "aria-label") || name.startsWith("data-")) return;
+    if (name === "role" && !controls.has(handle)) return widgetSetAccessibilityRole(handle as Widget, value == null ? "" : String(value));
+    if (ARIA_STATES.has(name)) return widgetSetAccessibilityState(handle as Widget, name.slice(5), ariaState(value));
+    if (name === "tabIndex" || name === "class" || (name.startsWith("aria-") && name !== "aria-label") || name.startsWith("data-")) return;
     const control = controls.get(handle);
     if (control) return setControlProperty(control, name, value);
     const option = options.get(handle);
