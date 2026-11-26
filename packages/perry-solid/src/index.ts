@@ -9,7 +9,7 @@ import {
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
-  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
+  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetMaxWidthAlignment, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
   currentModifiers, widgetSetOnMouseDown, type PointerEvent, type State, type Widget,
@@ -132,11 +132,32 @@ function setStyle(widget: Widget, kind: string, style: unknown): void {
   if (style == null) return;
   if (typeof style !== "object") throw new Error("style must be an object natively");
   for (const [name, value] of Object.entries(style)) {
-    if (name !== "color" || (kind !== "Text" && kind !== "RichText")) throw new Error(`style.${name} is unsupported on ${kind}`);
-    if (value == null) continue;
-    const [r, g, b, a] = parseColour(String(value));
-    textSetColor(widget, r, g, b, a);
+    if ((name !== "color" && name !== "max-width") || (kind !== "Text" && kind !== "RichText")) throw new Error(`style.${name} is unsupported on ${kind}`);
+    if (name === "max-width") setMaxWidth(widget, value);
+    else if (value != null) {
+      const [r, g, b, a] = parseColour(String(value));
+      textSetColor(widget, r, g, b, a);
+    }
   }
+}
+
+// A text's own max-width, which replaces the column-wide cap that stretches it.
+const maxWidths = new Map<number, number>();
+
+function setMaxWidth(widget: Widget, value: unknown): void {
+  if (value == null) {
+    if (maxWidths.delete(widget)) widgetSetMaxWidth(widget, 1e6);
+    return;
+  }
+  const width = /^(\d+(?:\.\d+)?)px$/.exec(String(value));
+  if (!width) throw new Error(`max-width "${value}" is unsupported natively; use pixels, such as "200px"`);
+  maxWidths.set(widget, Number(width[1]));
+  widgetSetMaxWidthAlignment(widget, 1);
+  widgetSetMaxWidth(widget, capOf(widget));
+}
+
+function capOf(widget: number): number {
+  return maxWidths.get(widget) ?? 1e6;
 }
 
 function numeric(value: unknown, fallback: number): number {
@@ -1020,7 +1041,7 @@ const driver: NativeDriver = {
         return widgetAddChildAt(disclosure.header, child as Widget, 1);
       }
       widgetAddChildAt(disclosure.body, child as Widget, disclosure.summary ? index - 1 : index);
-      if (slotted.has(child)) widgetSetMaxWidth(child as Widget, 1e6);
+      if (slotted.has(child)) widgetSetMaxWidth(child as Widget, capOf(child));
       return;
     }
     const list = lists.get(parent);
@@ -1046,7 +1067,7 @@ const driver: NativeDriver = {
       widgetRemoveChild(previousParent as Widget, child as Widget);
     }
     widgetAddChildAt(parent as Widget, child as Widget, index);
-    if (columns.has(parent) && slotted.has(child)) widgetSetMaxWidth(child as Widget, 1e6);
+    if (columns.has(parent) && slotted.has(child)) widgetSetMaxWidth(child as Widget, capOf(child));
     const control = controls.get(child);
     if (control && columns.has(parent)) {
       inColumn.add(child);

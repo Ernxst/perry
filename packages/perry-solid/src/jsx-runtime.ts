@@ -57,10 +57,10 @@ export namespace JSX {
   interface TextProps extends Common, Clickable {
     children?: Element;
     /**
-     * Natively only `color`, as hex, `rgb()` or `rgba()`. It's fixed, so it doesn't follow dark
-     * mode as the system's text colour does.
+     * Natively only `color`, as hex, `rgb()` or `rgba()`, and `max-width` in pixels. The colour
+     * is fixed, so it doesn't follow dark mode as the system's text colour does.
      */
-    style?: { color?: string };
+    style?: { color?: string; "max-width"?: `${number}px` };
   }
   /** Natively a VStack; on the web a flex column with the stacks' gap. */
   interface BlockProps extends Common, Clickable {
