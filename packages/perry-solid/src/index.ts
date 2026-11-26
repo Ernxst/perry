@@ -3,7 +3,7 @@ import {
   ScrollView as NativeScrollView, scrollviewSetChild,
   Text, Button, Divider, BloomView, TextField, SecureField, TextArea, Toggle, Slider, Picker, DatePicker,
   Image, ImageFile, ProgressView, AttributedText, attributedTextAppend, attributedTextClear,
-  textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetFontFamily, textSetColor, textSetDecoration,
+  textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetFontFamily, textSetColor, textSetDecoration, textSetWraps,
   textfieldSetString, textareaSetString, toggleSetState, pickerAddItem, pickerSetSelected, datePickerSetDate,
   textfieldSetOnSubmit, WebView, webviewLoadUrl, Combobox, comboboxAddItem, comboboxSetValue,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
@@ -737,11 +737,18 @@ function makeLink(text: Widget, emit: Emit): void {
   });
 }
 
+// textSetWraps with width 0 wraps at whatever width the slot gives the text. A set width sizes its
+// height for that width alone, leaving a gap below it when the slot is wider.
+function slot(text: Widget): void {
+  slotted.add(text);
+  textSetWraps(text, 0);
+}
+
 function createRichText(tag: string, emit: Emit): Widget {
   const text = AttributedText();
   richTexts.set(text, tag);
   if (tag === "mark") markText(text);
-  else slotted.add(text);
+  else slot(text);
   if (tag === "a") makeLink(text, emit);
   if (tag === "summary") summaries.add(text);
   return text;
@@ -816,7 +823,7 @@ const driver: NativeDriver = {
         if (ITALIC.has(tag)) return createRichText(tag, emit);
         const text = Text("");
         // In the slot, text is as wide as its column, which would stretch a mark's background.
-        if (tag !== "mark") slotted.add(text);
+        if (tag !== "mark") slot(text);
         if (tag === "span") plainTexts.add(text);
         if (HEADINGS[tag]) textSetFontWeight(text, HEADINGS[tag], SEMIBOLD);
         else if (tag === "strong" || tag === "b") textSetFontWeight(text, BODY, BOLD);
