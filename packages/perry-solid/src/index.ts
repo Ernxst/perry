@@ -9,7 +9,7 @@ import {
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
-  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetMatchParentWidth, widgetSetHugging, stackSetAlignment, stackSetDistribution,
+  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
   currentModifiers, type State, type Widget,
@@ -1095,6 +1095,24 @@ export const h = native.h;
 export function render(code: () => JSX.Element, root: Widget): () => void {
   renderRoot = root;
   return native.render(code as Parameters<typeof native.render>[0], root);
+}
+
+/**
+ * Mounts the app in a page that scrolls as a browser window does, and returns the window's body.
+ * A modal dialog covers the window rather than the page.
+ */
+export function renderScrolling(code: () => JSX.Element): Widget {
+  const body = NativeZStack();
+  const scroll = NativeScrollView();
+  const page = NativeZStack();
+  scrollviewSetChild(scroll, page);
+  widgetAddChild(body, scroll);
+  widgetMatchParentWidth(scroll);
+  widgetMatchParentHeight(scroll);
+  widgetMatchParentWidth(page);
+  renderRoot = body;
+  native.render(code as Parameters<typeof native.render>[0], page);
+  return body;
 }
 export const createElement = native.createElement;
 export const createTextNode = native.createTextNode;
