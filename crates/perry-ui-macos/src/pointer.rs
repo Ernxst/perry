@@ -115,6 +115,14 @@ thread_local! {
     /// window we observe lazily.
     static WINDOWS_PRIMED: RefCell<std::collections::HashSet<usize>> =
         RefCell::new(std::collections::HashSet::new());
+    /// Widgets whose mouse-down callback took the press that started the
+    /// current drag. Like an `NSView` that took a `mouseDown:`, they keep
+    /// getting drags and the release outside their bounds until every
+    /// button is up.
+    static CAPTURED: RefCell<std::collections::HashSet<i64>> =
+        RefCell::new(std::collections::HashSet::new());
+    /// The buttons held, one bit per DOM button number.
+    static BUTTONS_HELD: RefCell<u32> = const { RefCell::new(0) };
 }
 
 pub(crate) fn scan_macos_pointer_gc_roots(visitor: &mut perry_ffi::GcRootVisitor<'_>) {
@@ -281,6 +289,28 @@ unsafe fn handle_event(event: *mut AnyObject) {
         dispatch_hover_transitions(window, win_loc);
     }
 
+    let is_down = matches!(
+        event_type,
+        NS_EVENT_TYPE_LEFT_MOUSE_DOWN | NS_EVENT_TYPE_RIGHT_MOUSE_DOWN | NS_EVENT_TYPE_OTHER_MOUSE_DOWN
+    );
+    let is_up = matches!(
+        event_type,
+        NS_EVENT_TYPE_LEFT_MOUSE_UP | NS_EVENT_TYPE_RIGHT_MOUSE_UP | NS_EVENT_TYPE_OTHER_MOUSE_UP
+    );
+    let follows_capture = is_up || (is_move && event_type != NS_EVENT_TYPE_MOUSE_MOVED);
+    let bit = 1u32 << button.min(31);
+    if is_down {
+        let first = BUTTONS_HELD.with(|b| {
+            let mut held = b.borrow_mut();
+            let first = *held == 0;
+            *held |= bit;
+            first
+        });
+        if first {
+            CAPTURED.with(|c| c.borrow_mut().clear());
+        }
+    }
+
     let entries = registry();
 
     for (handle, closure_f64) in entries {
@@ -300,12 +330,17 @@ unsafe fn handle_event(event: *mut AnyObject) {
             fromView: std::ptr::null::<AnyObject>()
         ];
         let bounds: CGRect = msg_send![&*view, bounds];
-        if local.x < bounds.origin.x
-            || local.y < bounds.origin.y
-            || local.x > bounds.origin.x + bounds.size.width
-            || local.y > bounds.origin.y + bounds.size.height
+        let captured = follows_capture && CAPTURED.with(|c| c.borrow().contains(&handle));
+        if !captured
+            && (local.x < bounds.origin.x
+                || local.y < bounds.origin.y
+                || local.x > bounds.origin.x + bounds.size.width
+                || local.y > bounds.origin.y + bounds.size.height)
         {
             continue;
+        }
+        if is_down {
+            CAPTURED.with(|c| c.borrow_mut().insert(handle));
         }
         // Flip y: NSView's origin is bottom-left; PointerEvent's is top-left.
         let local_x = local.x - bounds.origin.x;
@@ -335,6 +370,17 @@ unsafe fn handle_event(event: *mut AnyObject) {
         }
         let pe = js_pointer_event_new(local_x, local_y, button, POINTER_TYPE_MOUSE);
         js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, pe);
+    }
+
+    if is_up {
+        let none_held = BUTTONS_HELD.with(|b| {
+            let mut held = b.borrow_mut();
+            *held &= !bit;
+            *held == 0
+        });
+        if none_held {
+            CAPTURED.with(|c| c.borrow_mut().clear());
+        }
     }
 }
 
