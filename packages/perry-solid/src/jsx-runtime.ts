@@ -25,7 +25,8 @@ export namespace JSX {
 
   /**
    * `role`, `tabIndex` and the `aria-*` attributes reach assistive technology on the web; natively
-   * they're accepted and have no effect, except `role="switch"`, which draws a checkbox as a switch.
+   * only `aria-label` does, naming the widget for VoiceOver. The rest are accepted and have no
+   * effect, except `role="switch"`, which draws a checkbox as a switch.
    */
   interface Common {
     hidden?: boolean;

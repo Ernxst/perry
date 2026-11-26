@@ -8,7 +8,7 @@ import {
   textfieldSetOnSubmit, WebView, webviewLoadUrl, Combobox, comboboxAddItem, comboboxSetValue,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
-  widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
+  widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetAccessibilityLabel, widgetSetOnClick,
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetMaxWidthAlignment, widgetGetFrame, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
@@ -282,9 +282,9 @@ const REBUILDS: Record<Control["kind"], string[]> = {
   Datalist: ["id"],
 };
 const CONTROL_PROPS: Record<Control["kind"], string[]> = {
-  Input: ["type", "placeholder", "min", "max", "step", "size", "value", "checked", "disabled", "title", "hidden", "list", "role", "name"],
-  TextArea: ["placeholder", "value", "disabled", "title", "hidden"],
-  Picker: ["value", "disabled", "title", "hidden"],
+  Input: ["type", "placeholder", "min", "max", "step", "size", "value", "checked", "disabled", "title", "aria-label", "hidden", "list", "role", "name"],
+  TextArea: ["placeholder", "value", "disabled", "title", "aria-label", "hidden"],
+  Picker: ["value", "disabled", "title", "aria-label", "hidden"],
   Datalist: ["id"],
 };
 
@@ -442,6 +442,7 @@ function applyControl(control: Control): void {
   }
   widgetSetHidden(control.wrapper, props.hidden ? 1 : 0);
   if (props.title != null) widgetSetTooltip(inner, String(props.title));
+  if (props["aria-label"] != null) widgetSetAccessibilityLabel(inner, String(props["aria-label"]));
   const size = Number(props.size);
   if (inColumn.has(control.wrapper) && !FIXED.has(type)) stretch(control, inner);
   else if (WIDTHS[type]) widgetSetWidth(inner, size > 0 && type !== "range" && type !== "date" ? size * CHARACTER_WIDTH + FIELD_INSET : WIDTHS[type]);
@@ -980,7 +981,7 @@ const driver: NativeDriver = {
     }
   },
   setProperty(handle, kind, name, value) {
-    if ((name === "role" && !controls.has(handle)) || name === "tabIndex" || name === "class" || name.startsWith("aria-") || name.startsWith("data-")) return;
+    if ((name === "role" && !controls.has(handle)) || name === "tabIndex" || name === "class" || (name.startsWith("aria-") && name !== "aria-label") || name.startsWith("data-")) return;
     const control = controls.get(handle);
     if (control) return setControlProperty(control, name, value);
     const option = options.get(handle);
@@ -1032,6 +1033,7 @@ const driver: NativeDriver = {
       case "hidden": widgetSetHidden(widget, value ? 1 : 0); return;
       case "disabled": widgetSetEnabled(widget, value ? 0 : 1); return;
       case "title": widgetSetTooltip(widget, value == null ? "" : String(value)); return;
+      case "aria-label": widgetSetAccessibilityLabel(widget, value == null ? "" : String(value)); return;
       case "cornerRadius": setCornerRadius(widget, numeric(value, 0)); return;
       case "padding": setPadding(bodies.get(handle) ?? widget, numeric(value, 0)); return;
       case "href":
