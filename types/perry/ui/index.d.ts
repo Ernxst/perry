@@ -1271,6 +1271,26 @@ export function widgetSetOnMouseUp(widget: Widget, callback: (e: PointerEvent) =
  * (x, y) pair. See `widgetSetOnMouseDown`.
  */
 export function widgetSetOnMouseMove(widget: Widget, callback: (e: PointerEvent) => void): void;
+
+/**
+ * Fire when the scroll wheel or trackpad scrolls over the widget, with the
+ * deltas in points signed as a DOM `WheelEvent`'s (positive `deltaY`
+ * scrolls down) and the pointer's widget-local position. macOS only.
+ */
+export function widgetSetOnWheel(
+    widget: Widget,
+    callback: (deltaX: number, deltaY: number, x: number, y: number) => void,
+): void;
+
+/**
+ * Fire as a trackpad pinch over the widget changes, with the change in
+ * scale since the last call (positive zooms in) and the pointer's
+ * widget-local position. macOS only.
+ */
+export function widgetSetOnMagnify(
+    widget: Widget,
+    callback: (magnification: number, x: number, y: number) => void,
+): void;
 /** Animate opacity to `target` over `durationSecs` seconds. */
 export function widgetAnimateOpacity(widget: Widget, target: number, durationSecs: number): void;
 /** Animate position by `(dx, dy)` pixels over `durationSecs` seconds. */

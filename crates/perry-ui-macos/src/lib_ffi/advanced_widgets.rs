@@ -540,6 +540,18 @@ pub extern "C" fn perry_ui_widget_set_on_mouse_move(handle: i64, callback: f64) 
     crate::pointer::set_on_mouse_move(handle, callback);
 }
 
+/// Set a scroll-wheel handler, called with `(deltaX, deltaY, x, y)`.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_set_on_wheel(handle: i64, callback: f64) {
+    crate::pointer::set_on_wheel(handle, callback);
+}
+
+/// Set a pinch handler, called with `(magnification, x, y)`.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_set_on_magnify(handle: i64, callback: f64) {
+    crate::pointer::set_on_magnify(handle, callback);
+}
+
 /// Animate the opacity of a widget. `duration_secs` is in seconds.
 #[no_mangle]
 pub extern "C" fn perry_ui_widget_animate_opacity(handle: i64, target: f64, duration_secs: f64) {

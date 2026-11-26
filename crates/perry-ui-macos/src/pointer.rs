@@ -30,6 +30,15 @@ use crate::widgets::get_widget;
 
 extern "C" {
     fn js_closure_call1(closure: *const u8, this: perry_ffi::JsThis, arg: f64) -> f64;
+    fn js_closure_call3(closure: *const u8, this: perry_ffi::JsThis, a: f64, b: f64, c: f64) -> f64;
+    fn js_closure_call4(
+        closure: *const u8,
+        this: perry_ffi::JsThis,
+        a: f64,
+        b: f64,
+        c: f64,
+        d: f64,
+    ) -> f64;
     fn js_nanbox_get_pointer(value: f64) -> i64;
     fn js_pointer_event_new(x: f64, y: f64, button: u32, pointer_type: u32) -> f64;
 }
@@ -54,6 +63,12 @@ const NS_EVENT_TYPE_RIGHT_MOUSE_DRAGGED: u64 = 7;
 const NS_EVENT_TYPE_OTHER_MOUSE_DOWN: u64 = 25;
 const NS_EVENT_TYPE_OTHER_MOUSE_UP: u64 = 26;
 const NS_EVENT_TYPE_OTHER_MOUSE_DRAGGED: u64 = 27;
+const NS_EVENT_TYPE_SCROLL_WHEEL: u64 = 22;
+const NS_EVENT_TYPE_MAGNIFY: u64 = 30;
+
+/// Points per line for a wheel that scrolls by lines rather than reporting
+/// precise deltas, as a mouse wheel with detents does.
+const WHEEL_LINE_POINTS: f64 = 10.0;
 
 /// NSEventMask = `1 << NSEventType`. We listen to every mouse event
 /// type that can possibly trigger one of our three callbacks.
@@ -66,7 +81,9 @@ const NS_EVENT_MASK: u64 = (1 << NS_EVENT_TYPE_LEFT_MOUSE_DOWN)
     | (1 << NS_EVENT_TYPE_RIGHT_MOUSE_DRAGGED)
     | (1 << NS_EVENT_TYPE_OTHER_MOUSE_DOWN)
     | (1 << NS_EVENT_TYPE_OTHER_MOUSE_UP)
-    | (1 << NS_EVENT_TYPE_OTHER_MOUSE_DRAGGED);
+    | (1 << NS_EVENT_TYPE_OTHER_MOUSE_DRAGGED)
+    | (1 << NS_EVENT_TYPE_SCROLL_WHEEL)
+    | (1 << NS_EVENT_TYPE_MAGNIFY);
 
 thread_local! {
     static MOUSE_DOWN_CB: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
@@ -79,6 +96,8 @@ thread_local! {
     /// mouse-moved event lands inside its bounds and was previously out,
     /// and vice-versa.
     static HOVER_CB: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
+    static WHEEL_CB: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
+    static MAGNIFY_CB: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
     /// `true` if the cursor was inside the widget on the last move
     /// event we processed.
     static HOVER_STATE: RefCell<HashMap<i64, bool>> = RefCell::new(HashMap::new());
@@ -97,7 +116,14 @@ thread_local! {
 }
 
 pub(crate) fn scan_macos_pointer_gc_roots(visitor: &mut perry_ffi::GcRootVisitor<'_>) {
-    for callbacks in [&MOUSE_DOWN_CB, &MOUSE_UP_CB, &MOUSE_MOVE_CB, &HOVER_CB] {
+    for callbacks in [
+        &MOUSE_DOWN_CB,
+        &MOUSE_UP_CB,
+        &MOUSE_MOVE_CB,
+        &HOVER_CB,
+        &WHEEL_CB,
+        &MAGNIFY_CB,
+    ] {
         callbacks.with(|callbacks| {
             for callback in callbacks.borrow_mut().values_mut() {
                 visitor.visit_nanbox_f64_slot(callback);
@@ -209,6 +235,10 @@ unsafe fn handle_event(event: *mut AnyObject) {
         return;
     }
     let win_loc: CGPoint = msg_send![event, locationInWindow];
+    if event_type == NS_EVENT_TYPE_SCROLL_WHEEL || event_type == NS_EVENT_TYPE_MAGNIFY {
+        dispatch_gesture(event, event_type, window, win_loc);
+        return;
+    }
     let button = js_button_from_event(event, event_type);
 
     // Pick which registry to dispatch to. Drag events are routed to
@@ -296,6 +326,80 @@ unsafe fn handle_event(event: *mut AnyObject) {
         }
         let pe = js_pointer_event_new(local_x, local_y, button, POINTER_TYPE_MOUSE);
         js_closure_call1(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, pe);
+    }
+}
+
+/// The event location in `view`'s coordinates with the origin at its top
+/// left, or `None` when `view` is hidden, in another window, or doesn't
+/// hold the point.
+unsafe fn local_point(view: &NSView, window: *mut AnyObject, win_loc: CGPoint) -> Option<(f64, f64)> {
+    let view_window: *mut AnyObject = msg_send![view, window];
+    if view_window != window || view.isHiddenOrHasHiddenAncestor() {
+        return None;
+    }
+    let local: CGPoint = msg_send![
+        view,
+        convertPoint: win_loc,
+        fromView: std::ptr::null::<AnyObject>()
+    ];
+    let bounds: CGRect = msg_send![view, bounds];
+    if local.x < bounds.origin.x
+        || local.y < bounds.origin.y
+        || local.x > bounds.origin.x + bounds.size.width
+        || local.y > bounds.origin.y + bounds.size.height
+    {
+        return None;
+    }
+    Some((
+        local.x - bounds.origin.x,
+        bounds.size.height - (local.y - bounds.origin.y),
+    ))
+}
+
+/// Call the wheel callbacks with `(deltaX, deltaY, x, y)`, signed as a DOM
+/// `WheelEvent`'s deltas (positive `deltaY` scrolls down), or the magnify
+/// callbacks with `(magnification, x, y)`, for every widget under the
+/// pointer.
+unsafe fn dispatch_gesture(
+    event: *mut AnyObject,
+    event_type: u64,
+    window: *mut AnyObject,
+    win_loc: CGPoint,
+) {
+    let is_wheel = event_type == NS_EVENT_TYPE_SCROLL_WHEEL;
+    let registry = if is_wheel { &WHEEL_CB } else { &MAGNIFY_CB };
+    let entries: Vec<(i64, f64)> =
+        registry.with(|c| c.borrow().iter().map(|(k, v)| (*k, *v)).collect());
+    if entries.is_empty() {
+        return;
+    }
+    let (a, b) = if is_wheel {
+        let dx: f64 = msg_send![event, scrollingDeltaX];
+        let dy: f64 = msg_send![event, scrollingDeltaY];
+        let precise: bool = msg_send![event, hasPreciseScrollingDeltas];
+        let scale = if precise { 1.0 } else { WHEEL_LINE_POINTS };
+        (-dx * scale, -dy * scale)
+    } else {
+        let magnification: f64 = msg_send![event, magnification];
+        (magnification, 0.0)
+    };
+    for (handle, closure_f64) in entries {
+        let Some(view) = get_widget(handle) else {
+            continue;
+        };
+        let Some((x, y)) = local_point(&view, window, win_loc) else {
+            continue;
+        };
+        let closure_ptr = js_nanbox_get_pointer(closure_f64);
+        if closure_ptr == 0 {
+            continue;
+        }
+        let this = perry_ffi::JsThis::UNDEFINED;
+        if is_wheel {
+            js_closure_call4(closure_ptr as *const u8, this, a, b, x, y);
+        } else {
+            js_closure_call3(closure_ptr as *const u8, this, a, x, y);
+        }
     }
 }
 
@@ -392,6 +496,20 @@ pub fn set_on_mouse_move(handle: i64, callback: f64) {
     if let Some(view) = get_widget(handle) {
         prime_window_for_view(&view);
     }
+}
+
+pub fn set_on_wheel(handle: i64, callback: f64) {
+    WHEEL_CB.with(|c| {
+        c.borrow_mut().insert(handle, callback);
+    });
+    install_monitor_once();
+}
+
+pub fn set_on_magnify(handle: i64, callback: f64) {
+    MAGNIFY_CB.with(|c| {
+        c.borrow_mut().insert(handle, callback);
+    });
+    install_monitor_once();
 }
 
 /// Set the `(isHovering: boolean)`-style hover callback (issue #1868).

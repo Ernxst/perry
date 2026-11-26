@@ -238,6 +238,18 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::Void,
     },
     MethodRow {
+        method: "widgetSetOnWheel",
+        runtime: "perry_ui_widget_set_on_wheel",
+        args: &[ArgKind::Widget, ArgKind::Closure],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
+        method: "widgetSetOnMagnify",
+        runtime: "perry_ui_widget_set_on_magnify",
+        args: &[ArgKind::Widget, ArgKind::Closure],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "widgetAnimateOpacity",
         runtime: "perry_ui_widget_animate_opacity",
         args: &[ArgKind::Widget, ArgKind::F64, ArgKind::F64],
