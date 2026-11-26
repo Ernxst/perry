@@ -20,7 +20,7 @@ mod core_video;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Sel};
 use objc2::{define_class, msg_send, AnyThread};
-use objc2_foundation::{NSDefaultRunLoopMode, NSObject, NSRunLoop, NSString};
+use objc2_foundation::{NSObject, NSRunLoop, NSRunLoopCommonModes, NSString};
 use std::cell::{Cell, RefCell};
 use std::sync::OnceLock;
 
@@ -242,7 +242,7 @@ fn native_source(owner: &AnyObject) -> Source {
         let _: () = msg_send![
             &*link,
             addToRunLoop: &*NSRunLoop::mainRunLoop(),
-            forMode: NSDefaultRunLoopMode
+            forMode: NSRunLoopCommonModes
         ];
         Source::Native {
             link,

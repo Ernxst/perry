@@ -584,7 +584,7 @@ pub fn app_run(_app_handle: i64) {
     unsafe {
         let target = PerryPumpTarget::new();
         let sel = Sel::register(c"pump:");
-        let _: Retained<AnyObject> = msg_send![
+        let timer: Retained<AnyObject> = msg_send![
             objc2::class!(NSTimer),
             scheduledTimerWithTimeInterval: 0.008f64,
             target: &*target,
@@ -592,6 +592,7 @@ pub fn app_run(_app_handle: i64) {
             userInfo: std::ptr::null::<AnyObject>(),
             repeats: true
         ];
+        run_in_common_modes(&timer);
         // Keep the target alive for the duration of the app
         std::mem::forget(target);
     }
@@ -653,6 +654,19 @@ fn install_test_mode_exit_timer() {
             repeats: false
         ];
         std::mem::forget(target);
+    }
+}
+
+/// Keeps a timer firing while AppKit runs the loop in a tracking mode, as it does while a
+/// slider's thumb is held or a menu is open. `scheduledTimerWithTimeInterval:` adds it to the
+/// default mode only.
+pub(crate) fn run_in_common_modes(timer: &AnyObject) {
+    unsafe {
+        let _: () = msg_send![
+            &*objc2_foundation::NSRunLoop::mainRunLoop(),
+            addTimer: timer,
+            forMode: objc2_foundation::NSRunLoopCommonModes
+        ];
     }
 }
 
@@ -1620,7 +1634,7 @@ pub fn set_timer(interval_ms: f64, callback: f64) {
 
         // NSTimer.scheduledTimerWithTimeInterval:target:selector:userInfo:repeats:
         let sel = Sel::register(c"timerFired:");
-        let _: Retained<AnyObject> = msg_send![
+        let timer: Retained<AnyObject> = msg_send![
             objc2::class!(NSTimer),
             scheduledTimerWithTimeInterval: interval_secs,
             target: &*target,
@@ -1628,6 +1642,7 @@ pub fn set_timer(interval_ms: f64, callback: f64) {
             userInfo: std::ptr::null::<AnyObject>(),
             repeats: true
         ];
+        run_in_common_modes(&timer);
 
         // Keep the target alive
         std::mem::forget(target);
