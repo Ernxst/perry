@@ -58,6 +58,8 @@ const UTI_URL: &str = "public.url";
 thread_local! {
     /// Drop callback (NaN-boxed closure) per droppable view pointer.
     static DROP_CB: RefCell<HashMap<usize, f64>> = RefCell::new(HashMap::new());
+    /// Drag-over callback (NaN-boxed closure) per droppable view pointer.
+    static DRAG_OVER_CB: RefCell<HashMap<usize, f64>> = RefCell::new(HashMap::new());
     /// Drag-source providers (NaN-boxed closures) per source view pointer.
     static DRAG_TEXT: RefCell<HashMap<usize, f64>> = RefCell::new(HashMap::new());
     static DRAG_FILE: RefCell<HashMap<usize, f64>> = RefCell::new(HashMap::new());
@@ -68,7 +70,7 @@ thread_local! {
 }
 
 pub(crate) fn scan_macos_drag_drop_gc_roots(visitor: &mut perry_ffi::GcRootVisitor<'_>) {
-    for callbacks in [&DROP_CB, &DRAG_TEXT, &DRAG_FILE, &DRAG_URL] {
+    for callbacks in [&DROP_CB, &DRAG_OVER_CB, &DRAG_TEXT, &DRAG_FILE, &DRAG_URL] {
         callbacks.with(|callbacks| {
             for callback in callbacks.borrow_mut().values_mut() {
                 visitor.visit_nanbox_f64_slot(callback);
@@ -142,11 +144,15 @@ unsafe fn get_or_create_subclass(orig: &AnyClass) -> &'static AnyClass {
     // Destination protocol.
     builder.add_method(
         sel!(draggingEntered:),
-        dragging_op as extern "C-unwind" fn(*mut AnyObject, Sel, *mut AnyObject) -> usize,
+        dragging_entered as extern "C-unwind" fn(*mut AnyObject, Sel, *mut AnyObject) -> usize,
     );
     builder.add_method(
         sel!(draggingUpdated:),
         dragging_op as extern "C-unwind" fn(*mut AnyObject, Sel, *mut AnyObject) -> usize,
+    );
+    builder.add_method(
+        sel!(draggingExited:),
+        dragging_exited as extern "C-unwind" fn(*mut AnyObject, Sel, *mut AnyObject),
     );
     builder.add_method(
         sel!(prepareForDragOperation:),
@@ -194,6 +200,26 @@ extern "C-unwind" fn dragging_op(
     }
 }
 
+/// Tell the view's drag-over callback, if it has one, whether a drag is over it.
+fn report_drag_over(this: *mut AnyObject, over: bool) {
+    let Some(cb) = DRAG_OVER_CB.with(|m| m.borrow().get(&(this as usize)).copied()) else {
+        return;
+    };
+    unsafe {
+        let cb_ptr = js_nanbox_get_pointer(cb) as *const u8;
+        js_closure_call1(cb_ptr, perry_ffi::JsThis::UNDEFINED, if over { 1.0 } else { 0.0 });
+    }
+}
+
+extern "C-unwind" fn dragging_entered(this: *mut AnyObject, cmd: Sel, sender: *mut AnyObject) -> usize {
+    report_drag_over(this, true);
+    dragging_op(this, cmd, sender)
+}
+
+extern "C-unwind" fn dragging_exited(this: *mut AnyObject, _cmd: Sel, _sender: *mut AnyObject) {
+    report_drag_over(this, false);
+}
+
 extern "C-unwind" fn prepare_for_drag(
     this: *mut AnyObject,
     _cmd: Sel,
@@ -204,6 +230,7 @@ extern "C-unwind" fn prepare_for_drag(
 }
 
 extern "C-unwind" fn perform_drag(this: *mut AnyObject, _cmd: Sel, sender: *mut AnyObject) -> Bool {
+    report_drag_over(this, false);
     let cb = DROP_CB.with(|m| m.borrow().get(&(this as usize)).copied());
     let Some(cb) = cb else {
         return Bool::NO;
@@ -424,6 +451,17 @@ pub extern "C" fn perry_ui_widget_on_drop(widget: i64, callback: f64) {
         ]);
         let _: () = msg_send![view, registerForDraggedTypes: &*types];
     }
+}
+
+/// Call `callback` with 1 when a drag enters `widget` and 0 when it leaves or
+/// drops. The widget takes drops only once `perry_ui_widget_on_drop` registers it.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_on_drag_over(widget: i64, callback: f64) {
+    let Some(ptr) = view_ptr(widget) else { return };
+    DRAG_OVER_CB.with(|m| {
+        m.borrow_mut().insert(ptr as usize, callback);
+    });
+    unsafe { ensure_swizzled(ptr) };
 }
 
 /// Register `widget` as a drag source offering plain text.

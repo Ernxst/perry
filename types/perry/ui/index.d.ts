@@ -1909,6 +1909,13 @@ export interface DropData {
 export function widgetOnDrop(widget: Widget, handler: (data: DropData) => void): void;
 
 /**
+ * Call `handler` with 1 when a drag enters `widget` and 0 when it leaves or
+ * drops, so a drop target can show that it's ready. The widget takes drops
+ * only once {@link widgetOnDrop} registers it.
+ */
+export function widgetOnDragOver(widget: Widget, handler: (over: number) => void): void;
+
+/**
  * Make `widget` a drag source that offers plain text. `provider` is called
  * when a drag begins and returns the text to carry (`public.utf8-plain-text`).
  * May be combined with {@link widgetSetDragFile} / {@link widgetSetDragUrl} to

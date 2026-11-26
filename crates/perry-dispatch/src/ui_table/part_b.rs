@@ -1189,6 +1189,12 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::Void,
     },
     MethodRow {
+        method: "widgetOnDragOver",
+        runtime: "perry_ui_widget_on_drag_over",
+        args: &[ArgKind::Widget, ArgKind::Closure],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "widgetSetDragText",
         runtime: "perry_ui_widget_set_drag_text",
         args: &[ArgKind::Widget, ArgKind::Closure],
