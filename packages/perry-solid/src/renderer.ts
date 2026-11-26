@@ -57,7 +57,21 @@ export interface NativeDriver {
   listen?(handle: number, kind: ElementName, handler: string, emit: Emit): void;
   /** The modifier keys held now, which a click reports. Without it, clicks report none. */
   modifiers?(): Modifiers;
+  /** Where the click on an element landed. Without it, clicks report 0 for every coordinate. */
+  position?(handle: number): Position;
 }
+
+/** A click's coordinates, in points, as the web's `MouseEvent` has them. */
+export interface Position {
+  clientX: number;
+  clientY: number;
+  pageX: number;
+  pageY: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+const NO_POSITION: Position = { clientX: 0, clientY: 0, pageX: 0, pageY: 0, offsetX: 0, offsetY: 0 };
 
 export interface Modifiers {
   altKey: boolean;
@@ -149,6 +163,7 @@ export function createNativeRenderer(driver: NativeDriver) {
         currentTarget: target,
         target,
         button: 0,
+        ...(handler === "onClick" && driver.position ? driver.position(node.handle) : NO_POSITION),
         ...(node.tag === "a" || !driver.modifiers ? NO_MODIFIERS : driver.modifiers()),
         defaultPrevented: false,
         preventDefault() { event.defaultPrevented = true; },

@@ -12,7 +12,7 @@ import {
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
-  currentModifiers, type State, type Widget,
+  currentModifiers, widgetSetOnMouseDown, type PointerEvent, type State, type Widget,
 } from "perry/ui";
 import { openURL } from "perry/system";
 import { CanvasElement } from "perry-browser";
@@ -514,6 +514,19 @@ const headerCells = new Set<number>();
 const listening = new Set<number>();
 const clicks = new Map<number, (() => void)[]>();
 
+// The click recogniser reports no position, so a click reads where the mouse last went down. Perry's
+// mouse-down callbacks fire for every registered widget under the pointer, covered or hidden ones
+// too, which is why they only record positions and don't fire clicks.
+const NOWHERE: PointerEvent = { x: 0, y: 0, button: 0, pointerType: "mouse" };
+const presses = new Map<number, PointerEvent>();
+function trackPresses(widget: Widget): void {
+  if (presses.has(widget)) return;
+  presses.set(widget, NOWHERE);
+  widgetSetOnMouseDown(widget, event => presses.set(widget, event));
+}
+let windowWidget = 0 as Widget;
+let pageWidget = 0 as Widget;
+
 // Each widgetSetOnClick adds another gesture recognizer to the view, so a widget gets one,
 // shared by its own behaviour, such as a link opening, and a handler.
 function addClick(widget: Widget, callback: () => void): void {
@@ -796,6 +809,12 @@ const driver: NativeDriver = {
     const bits = currentModifiers();
     return { metaKey: (bits & 1) !== 0, shiftKey: (bits & 2) !== 0, altKey: (bits & 4) !== 0, ctrlKey: (bits & 8) !== 0 };
   },
+  position(handle) {
+    const own = presses.get(handle) ?? NOWHERE;
+    const client = presses.get(windowWidget) ?? NOWHERE;
+    const page = presses.get(pageWidget) ?? NOWHERE;
+    return { clientX: client.x, clientY: client.y, pageX: page.x, pageY: page.y, offsetX: own.x, offsetY: own.y };
+  },
   create(kind, tag, emit): number {
     switch (kind) {
       case "VStack": {
@@ -1076,6 +1095,7 @@ const driver: NativeDriver = {
   // An element takes clicks only once it has a handler, so one without a handler leaves them to
   // the element around it. A button and the controls report their own events.
   listen(handle, kind, handler, emit) {
+    if (handler === "onClick") trackPresses(handle as Widget);
     if (handler !== "onClick" || listening.has(handle) || links.has(handle) || kind === "Button" || controls.has(handle) || options.has(handle)) return;
     listening.add(handle);
     addClick(handle as Widget, () => emit("onClick", { value: "", checked: false }));
@@ -1094,6 +1114,7 @@ export const h = native.h;
 /** Mounts the app into a native ZStack, which a modal dialog's layer then covers. */
 export function render(code: () => JSX.Element, root: Widget): () => void {
   renderRoot = root;
+  track(root, root);
   return native.render(code as Parameters<typeof native.render>[0], root);
 }
 
@@ -1111,8 +1132,16 @@ export function renderScrolling(code: () => JSX.Element): Widget {
   widgetMatchParentHeight(scroll);
   widgetMatchParentWidth(page);
   renderRoot = body;
+  track(body, page);
   native.render(code as Parameters<typeof native.render>[0], page);
   return body;
+}
+
+function track(window: Widget, page: Widget): void {
+  windowWidget = window;
+  pageWidget = page;
+  trackPresses(window);
+  trackPresses(page);
 }
 export const createElement = native.createElement;
 export const createTextNode = native.createTextNode;
