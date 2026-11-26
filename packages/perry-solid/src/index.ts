@@ -834,7 +834,7 @@ const driver: NativeDriver = {
     }
   },
   setProperty(handle, kind, name, value) {
-    if (name === "role" || name === "tabIndex" || name.startsWith("aria-")) return;
+    if (name === "role" || name === "tabIndex" || name === "class" || name.startsWith("aria-") || name.startsWith("data-")) return;
     const control = controls.get(handle);
     if (control) return setControlProperty(control, name, value);
     const option = options.get(handle);
