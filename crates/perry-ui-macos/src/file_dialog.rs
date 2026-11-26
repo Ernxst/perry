@@ -1,4 +1,4 @@
-use crate::ffi::js_string_from_bytes;
+use crate::ffi::{js_array_push_f64, js_string_from_bytes};
 use objc2::msg_send;
 use objc2_app_kit::NSOpenPanel;
 use objc2_foundation::{MainThreadMarker, NSString};
@@ -7,6 +7,41 @@ extern "C" {
     fn js_closure_call1(closure: *const u8, this: perry_ffi::JsThis, arg: f64) -> f64;
     fn js_nanbox_get_pointer(value: f64) -> i64;
     fn js_nanbox_string(ptr: i64) -> f64;
+    fn js_array_alloc(capacity: u32) -> *mut std::ffi::c_void;
+    fn js_nanbox_pointer(ptr: i64) -> f64;
+}
+
+/// Open a file dialog that allows several files. Calls `callback` with an array of the chosen
+/// paths, empty when the user cancels.
+pub fn open_files_dialog(callback: f64) {
+    let _mtm = MainThreadMarker::new().expect("perry/ui must run on the main thread");
+    unsafe {
+        let panel: objc2::rc::Retained<NSOpenPanel> = msg_send![
+            objc2::runtime::AnyClass::get(c"NSOpenPanel").unwrap(),
+            openPanel
+        ];
+        panel.setCanChooseFiles(true);
+        panel.setCanChooseDirectories(false);
+        panel.setAllowsMultipleSelection(true);
+
+        let response: isize = msg_send![&*panel, runModal];
+        let mut paths = Vec::new();
+        if response == 1 {
+            let urls = panel.URLs();
+            for i in 0..urls.len() {
+                let path: objc2::rc::Retained<NSString> = msg_send![&urls.objectAtIndex(i), path];
+                paths.push(path.to_string());
+            }
+        }
+
+        let mut array = js_array_alloc(paths.len() as u32);
+        for path in &paths {
+            let header = js_string_from_bytes(path.as_ptr(), path.len() as u32);
+            array = js_array_push_f64(array, js_nanbox_string(header as i64));
+        }
+        let closure_ptr = js_nanbox_get_pointer(callback) as *const u8;
+        js_closure_call1(closure_ptr, perry_ffi::JsThis::UNDEFINED, js_nanbox_pointer(array as i64));
+    }
 }
 
 /// Open a file dialog. Calls callback with the selected file path (NaN-boxed string).

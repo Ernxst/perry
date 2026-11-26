@@ -255,6 +255,12 @@ pub extern "C" fn perry_ui_open_file_dialog(callback: f64) {
     file_dialog::open_dialog(callback);
 }
 
+/// Open a file dialog that allows several files. Calls callback with an array of paths.
+#[no_mangle]
+pub extern "C" fn perry_ui_open_files_dialog(callback: f64) {
+    file_dialog::open_files_dialog(callback);
+}
+
 /// A file's contents as a `data:` URL is what a browser page needs to upload it; a
 /// native program reads the path from `openFileDialog` instead. This backend opens no
 /// dialog and reports a cancelled one: `callback("", "")`.

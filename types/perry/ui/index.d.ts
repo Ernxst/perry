@@ -1888,6 +1888,11 @@ export function alertWithButtons(
 ): void;
 export function openFileDialog(callback: (path: string) => void): void;
 /**
+ * Open a file dialog that allows several files. The callback gets every chosen path, or an
+ * empty array when the user cancels. macOS only.
+ */
+export function openFilesDialog(callback: (paths: string[]) => void): void;
+/**
  * Web: pick a file and receive its name and its contents as a base64 `data:` URL,
  * which is what a page needs to upload it (`openFileDialog` gives a browser page only
  * the name). `accept` filters the picker: "image/*", ".pdf", or "" for any file.

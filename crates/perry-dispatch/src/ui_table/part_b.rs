@@ -677,6 +677,12 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::Void,
     },
     MethodRow {
+        method: "openFilesDialog",
+        runtime: "perry_ui_open_files_dialog",
+        args: &[ArgKind::Closure],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "openFileDialogData",
         runtime: "perry_ui_open_file_dialog_data",
         args: &[ArgKind::Str, ArgKind::Closure],
