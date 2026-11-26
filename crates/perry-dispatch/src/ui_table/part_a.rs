@@ -587,6 +587,12 @@ pub(crate) const PERRY_UI_TABLE_PART_A: &[MethodRow] = &[
         args: &[ArgKind::Widget, ArgKind::F64],
         ret: ReturnKind::Void,
     },
+    MethodRow {
+        method: "widgetSetMaxWidthAlignment",
+        runtime: "perry_ui_widget_set_max_width_alignment",
+        args: &[ArgKind::Widget, ArgKind::F64],
+        ret: ReturnKind::Void,
+    },
     // ---- Image ----
     MethodRow {
         method: "ImageFile",

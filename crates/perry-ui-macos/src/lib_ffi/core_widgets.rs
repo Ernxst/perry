@@ -541,6 +541,12 @@ pub extern "C" fn perry_ui_widget_set_max_width(handle: i64, max_width: f64) {
     widgets::set_max_width(handle, max_width);
 }
 
+/// Place a widget capped by `perry_ui_widget_set_max_width`: 0 centred, 1 leading, 2 trailing.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_set_max_width_alignment(handle: i64, alignment: f64) {
+    widgets::set_max_width_alignment(handle, alignment);
+}
+
 /// Set a fixed height constraint on a widget.
 #[no_mangle]
 pub extern "C" fn perry_ui_widget_set_height(handle: i64, height: f64) {

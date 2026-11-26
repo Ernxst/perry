@@ -21,7 +21,7 @@ pub mod keyboard;
 pub mod lazyvstack;
 pub mod map_view;
 mod max_width;
-pub use max_width::set_max_width;
+pub use max_width::{set_max_width, set_max_width_alignment};
 pub mod navstack;
 pub(crate) mod padding;
 pub mod pdf_view;

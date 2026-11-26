@@ -11,6 +11,7 @@ use std::cell::RefCell;
 pub struct MaxWidthIvars {
     content: Retained<NSView>,
     cap: Retained<NSLayoutConstraint>,
+    position: RefCell<Retained<NSLayoutConstraint>>,
     parent_constraints: RefCell<Vec<Retained<NSLayoutConstraint>>>,
 }
 
@@ -59,6 +60,37 @@ impl MaxWidthView {
     }
 }
 
+thread_local! {
+    static ALIGNMENTS: RefCell<std::collections::HashMap<i64, i64>> = RefCell::new(Default::default());
+}
+
+/// Places a capped widget in its slot: 1 at the leading edge, 2 at the trailing edge, anything
+/// else centred.
+fn position(view: &NSView, slot: &NSView, alignment: i64) -> Retained<NSLayoutConstraint> {
+    match alignment {
+        1 => view.leadingAnchor().constraintEqualToAnchor(&slot.leadingAnchor()),
+        2 => view.trailingAnchor().constraintEqualToAnchor(&slot.trailingAnchor()),
+        _ => view.centerXAnchor().constraintEqualToAnchor(&slot.centerXAnchor()),
+    }
+}
+
+/// Where a widget capped by `set_max_width` sits when its parent is wider than the cap: 0
+/// centred, 1 at the leading edge, 2 at the trailing edge. May be set before or after the cap.
+pub fn set_max_width_alignment(handle: i64, alignment: f64) {
+    let alignment = alignment as i64;
+    ALIGNMENTS.with(|a| a.borrow_mut().insert(handle, alignment));
+    let Some(view) = super::get_layout_widget(handle) else {
+        return;
+    };
+    if let Some(slot) = view.downcast_ref::<MaxWidthView>() {
+        let next = position(&slot.ivars().content, slot, alignment);
+        let mut current = slot.ivars().position.borrow_mut();
+        current.setActive(false);
+        next.setActive(true);
+        *current = next;
+    }
+}
+
 pub(super) fn content(view: Retained<NSView>) -> Retained<NSView> {
     view.downcast_ref::<MaxWidthView>()
         .map(|slot| slot.ivars().content.clone())
@@ -81,7 +113,7 @@ pub(super) fn refresh_children(view: &NSView) {
     }
 }
 
-/// Fill the available width up to `max_width`, keeping the content centered.
+/// Fill the available width up to `max_width`, placed as `set_max_width_alignment` says.
 /// Invalid values are ignored; zero is a valid cap. A new cap replaces an old
 /// fixed width, and repeated calls update the existing constraint in place.
 pub fn set_max_width(handle: i64, max_width: f64) {
@@ -154,9 +186,13 @@ pub fn set_max_width(handle: i64, max_width: f64) {
     let slot = MaxWidthView::alloc(mtm).set_ivars(MaxWidthIvars {
         content: view.clone(),
         cap: cap.clone(),
+        position: RefCell::new(cap.clone()),
         parent_constraints: RefCell::new(Vec::new()),
     });
     let slot: Retained<MaxWidthView> = unsafe { msg_send![super(slot), init] };
+    let alignment = ALIGNMENTS.with(|a| a.borrow().get(&handle).copied().unwrap_or(0));
+    let placed = position(&view, &slot, alignment);
+    *slot.ivars().position.borrow_mut() = placed.clone();
     slot.setTranslatesAutoresizingMaskIntoConstraints(false);
     slot.setHidden(view.isHidden());
     slot.addSubview(&view);
@@ -173,8 +209,7 @@ pub fn set_max_width(handle: i64, max_width: f64) {
         cap,
         fills,
         fits,
-        view.centerXAnchor()
-            .constraintEqualToAnchor(&slot.centerXAnchor()),
+        placed,
         view.topAnchor().constraintEqualToAnchor(&slot.topAnchor()),
         view.bottomAnchor()
             .constraintEqualToAnchor(&slot.bottomAnchor()),

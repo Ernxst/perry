@@ -946,6 +946,12 @@ export function widgetSetWidth(widget: Widget, width: number): void;
  * Supported on macOS and Web (JS/Wasm). Currently a no-op on other backends.
  */
 export function widgetSetMaxWidth(widget: Widget, maxWidth: number): void;
+/**
+ * Where a widget capped by widgetSetMaxWidth sits when its parent is wider than the cap:
+ * 0 centred (the default), 1 at the leading edge, 2 at the trailing edge.
+ * May be set before or after the cap. macOS only.
+ */
+export function widgetSetMaxWidthAlignment(widget: Widget, alignment: number): void;
 export function widgetSetHeight(widget: Widget, height: number): void;
 export function widgetSetHugging(widget: Widget, priority: number): void;
 export function widgetSetHidden(widget: Widget, hidden: number): void;
