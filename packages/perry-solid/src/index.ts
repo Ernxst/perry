@@ -42,6 +42,10 @@ const ITALIC = new Set(["em", "i", "var", "cite", "dfn", "address"]);
 const WIDTHS: Record<string, number> = {
   text: 200, password: 200, combobox: 200, search: 200, email: 200, url: 200, tel: 200, number: 200, range: 150, textarea: 200, date: 130,
 };
+// An input's `size` counts characters; these approximate the system font's average width and the
+// field's border and inset.
+const CHARACTER_WIDTH = 8;
+const FIELD_INSET = 12;
 const TEXTAREA_HEIGHT = 60;
 const PROGRESS_WIDTH = 150;
 const PROGRESS_HEIGHT = 6;
@@ -222,7 +226,7 @@ const REBUILDS: Record<Control["kind"], string[]> = {
   Datalist: ["id"],
 };
 const CONTROL_PROPS: Record<Control["kind"], string[]> = {
-  Input: ["type", "placeholder", "min", "max", "step", "value", "checked", "disabled", "title", "hidden", "list"],
+  Input: ["type", "placeholder", "min", "max", "step", "size", "value", "checked", "disabled", "title", "hidden", "list"],
   TextArea: ["placeholder", "value", "disabled", "title", "hidden"],
   Picker: ["value", "disabled", "title", "hidden"],
   Datalist: ["id"],
@@ -347,7 +351,8 @@ function applyControl(control: Control): void {
   }
   widgetSetHidden(control.wrapper, props.hidden ? 1 : 0);
   if (props.title != null) widgetSetTooltip(inner, String(props.title));
-  if (WIDTHS[type]) widgetSetWidth(inner, WIDTHS[type]);
+  const size = Number(props.size);
+  if (WIDTHS[type]) widgetSetWidth(inner, size > 0 && type !== "range" && type !== "date" ? size * CHARACTER_WIDTH + FIELD_INSET : WIDTHS[type]);
   if (type === "textarea") widgetSetHeight(inner, TEXTAREA_HEIGHT);
 }
 

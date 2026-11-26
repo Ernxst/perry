@@ -198,6 +198,8 @@ export namespace JSX {
       min?: number;
       max?: number;
       step?: number;
+      /** The field's width in characters. */
+      size?: number;
       /** A `datalist`'s id. Natively the input is then a combobox, which shows no placeholder. */
       list?: string;
     };
