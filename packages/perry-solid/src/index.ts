@@ -773,15 +773,16 @@ function hideDialog(dialog: Dialog): boolean {
 /** What an element's `ref` gets natively: its size and position after layout, in points. */
 class MeasuredElement {
   declare handle: number;
+  protected get measured(): Widget { return this.handle as unknown as Widget; }
   getBoundingClientRect(): { x: number; y: number; left: number; top: number; right: number; bottom: number; width: number; height: number } {
-    const x = widgetGetFrame(this.handle as unknown as Widget, 0);
-    const y = widgetGetFrame(this.handle as unknown as Widget, 1);
-    const width = widgetGetFrame(this.handle as unknown as Widget, 2);
-    const height = widgetGetFrame(this.handle as unknown as Widget, 3);
+    const x = widgetGetFrame(this.measured, 0);
+    const y = widgetGetFrame(this.measured, 1);
+    const width = widgetGetFrame(this.measured, 2);
+    const height = widgetGetFrame(this.measured, 3);
     return { x, y, left: x, top: y, right: x + width, bottom: y + height, width, height };
   }
-  get offsetWidth(): number { return Math.round(widgetGetFrame(this.handle as unknown as Widget, 2)); }
-  get offsetHeight(): number { return Math.round(widgetGetFrame(this.handle as unknown as Widget, 3)); }
+  get offsetWidth(): number { return Math.round(widgetGetFrame(this.measured, 2)); }
+  get offsetHeight(): number { return Math.round(widgetGetFrame(this.measured, 3)); }
   get clientWidth(): number { return this.offsetWidth; }
   get clientHeight(): number { return this.offsetHeight; }
 }
@@ -789,6 +790,8 @@ class MeasuredElement {
 /** What a dialog's `ref` gets natively: the HTMLDialogElement methods both builds support. */
 class DialogElement extends MeasuredElement {
   returnValue = "";
+  // The box, which showModal() moves out of the placeholder into the modal layer.
+  protected override get measured(): Widget { return dialogs.get(this.handle)!.box; }
   get open(): boolean { return dialogs.get(this.handle)!.open; }
   show(): void { showDialog(dialogs.get(this.handle)!, false); }
   showModal(): void { showDialog(dialogs.get(this.handle)!, true); }
