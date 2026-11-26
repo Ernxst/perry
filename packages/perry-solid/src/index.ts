@@ -10,9 +10,9 @@ import {
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetHugging, stackSetAlignment, stackSetDistribution,
-  widgetSetBorderWidth, widgetSetBorderColor,
+  widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
-  type Widget,
+  type State, type Widget,
 } from "perry/ui";
 import { openURL } from "perry/system";
 import { CanvasElement } from "perry-browser";
@@ -126,6 +126,8 @@ interface Control {
   options: number[];
   /** The text the control last showed, so a controlled value echoing back isn't set again. */
   shown: string;
+  /** A range input's value, bound to its slider, since Perry's slider can only be moved through a state. */
+  slider?: State;
   scheduled: boolean;
   emit: (handler: string, state: ControlState) => void;
 }
@@ -290,10 +292,15 @@ function createControl(control: Control): Widget {
         props.checked = on;
         report(control, { value: "on", checked: on });
       });
-    case "range":
-      return Slider(numeric(props.min, 0), numeric(props.max, 100), value => {
-        report(control, { value: String(value), checked: false });
+    case "range": {
+      const slider = Slider(numeric(props.min, 0), numeric(props.max, 100), value => {
+        control.shown = String(value);
+        report(control, { value: control.shown, checked: false });
       });
+      control.slider = stateCreate(numeric(props.min, 0));
+      stateBindSlider(control.slider, slider);
+      return slider;
+    }
     case "date":
       return DatePicker(0, 0, value => {
         control.shown = value;
@@ -337,10 +344,10 @@ function applyControl(control: Control): void {
       control.shown = date[0];
       datePickerSetDate(inner, Number(date[1]), Number(date[2]), Number(date[3]));
     }
-  } else if (type !== "range" && props.value != null && String(props.value) !== control.shown) {
-    // Perry's slider has no value setter, so a range input starts at min and only reports.
+  } else if (props.value != null && String(props.value) !== control.shown) {
     control.shown = String(props.value);
-    if (type === "textarea") textareaSetString(inner, control.shown);
+    if (type === "range") stateSet(control.slider!, Number(props.value));
+    else if (type === "textarea") textareaSetString(inner, control.shown);
     else if (type === "combobox") comboboxSetValue(inner, control.shown);
     else textfieldSetString(inner, control.shown);
   }
