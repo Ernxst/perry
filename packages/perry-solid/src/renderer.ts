@@ -400,14 +400,27 @@ export function createNativeRenderer(driver: NativeDriver) {
   }
 
   // Perry's JSX compiler emits Solid 1's universal helpers: `effect` with one function that
-  // reads and writes, threading the previous values, and `use` for a `ref` callback.
-  function effect<T>(fn: (previous: T) => T, initial: T): void {
-    let previous = initial;
+  // reads and writes, threading the previous values, and `use` for a `ref` callback. Code
+  // compiled by Solid 2.0's own compiler calls `effect` with separate read and apply
+  // functions, and passes an element's static props to `createElement`.
+  function effect<T>(fn: (previous: T) => T, initial: T): void;
+  function effect<T>(read: () => T, apply: (value: T, previous: T | undefined) => void): void;
+  function effect<T>(fn: (previous?: T) => T, second: unknown): void {
+    if (typeof second === "function") {
+      renderer.effect(fn, second as (value: T, previous: T | undefined) => void);
+      return;
+    }
+    let previous = second as T;
     renderer.effect(() => { previous = fn(previous); }, () => {});
+  }
+  function createElementWith(tag: string, props?: Record<string, unknown>): NativeNode {
+    const node = renderer.createElement(tag);
+    if (props) renderer.spread(node, props);
+    return node;
   }
   function use<T>(callback: (node: T) => void, node: T): void {
     untrack(() => callback(node));
   }
 
-  return { ...renderer, createComponent, effect, use, render, h, removeNode };
+  return { ...renderer, createComponent, createElement: createElementWith, effect, use, render, h, removeNode };
 }
