@@ -2,7 +2,7 @@ import {
   VStack as NativeVStack, HStack as NativeHStack, ZStack as NativeZStack, Spacer as NativeSpacer,
   ScrollView as NativeScrollView, scrollviewSetChild,
   Text, Button, Divider, BloomView, TextField, SecureField, TextArea, Toggle, Slider, Picker, DatePicker,
-  Image, ImageFile, ProgressView, AttributedText, attributedTextAppend, attributedTextClear,
+  Image, ImageFile, imageSetOnLoad, ProgressView, AttributedText, attributedTextAppend, attributedTextClear,
   textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetFontFamily, textSetColor, textSetDecoration, textSetWraps,
   textfieldSetString, textareaSetString, toggleSetState, toggleSetStyle, sliderSetStep, pickerAddItem, pickerSetSelected, datePickerSetDate,
   textfieldSetOnSubmit, WebView, webviewLoadUrl, Combobox, comboboxAddItem, comboboxSetValue,
@@ -253,6 +253,7 @@ const summaries = new Set<number>();
 // An <img> is a stack holding the image, which is made again when src changes.
 interface Picture {
   wrapper: Widget;
+  emit: Emit;
   inner: Widget | 0;
   src: string;
   alt: string;
@@ -482,7 +483,15 @@ function loadImage(image: Picture): void {
   image.inner = 0;
   if (!image.src) return;
   // Other sources are files in the app bundle's Resources, where Vite's public/ folder is copied.
-  image.inner = /^(https?|data):/.test(image.src) ? Image(image.src, image.alt) : ImageFile(image.src.replace(/^\//, ""));
+  if (/^(https?|data):/.test(image.src)) {
+    const inner = Image(image.src, image.alt);
+    image.inner = inner;
+    imageSetOnLoad(inner, loaded => {
+      if (image.inner === inner) image.emit(loaded ? "onLoad" : "onError", { value: "", checked: false });
+    });
+  } else {
+    image.inner = ImageFile(image.src.replace(/^\//, ""));
+  }
   widgetAddChild(image.wrapper, image.inner);
   sizeImage(image);
 }
@@ -938,7 +947,7 @@ const driver: NativeDriver = {
       case "Dialog": return createDialog(emit);
       case "Image": {
         const wrapper = NativeHStack(0, []);
-        images.set(wrapper, { wrapper, inner: 0, src: "", alt: "", width: undefined, height: undefined });
+        images.set(wrapper, { wrapper, emit, inner: 0, src: "", alt: "", width: undefined, height: undefined });
         return wrapper;
       }
       case "Progress": return createBar(tag === "meter");
