@@ -787,6 +787,14 @@ pub fn app_set_size(app_handle: i64, width: f64, height: f64) {
 
 thread_local! {
     static SHORTCUT_CALLBACKS: RefCell<HashMap<usize, f64>> = RefCell::new(HashMap::new());
+    static SHORTCUT_ITEMS: RefCell<Vec<InstalledShortcut>> = const { RefCell::new(Vec::new()) };
+}
+
+struct InstalledShortcut {
+    key: String,
+    modifiers: u64,
+    item: Retained<NSMenuItem>,
+    target_addr: usize,
 }
 
 static GLOBAL_HOTKEY_CALLBACKS: LazyLock<Mutex<HashMap<usize, f64>>> =
@@ -1247,6 +1255,14 @@ fn install_keyboard_shortcut(
 
         item.setTarget(Some(&target));
         std::mem::forget(target);
+        SHORTCUT_ITEMS.with(|items| {
+            items.borrow_mut().push(InstalledShortcut {
+                key: key_str.to_string(),
+                modifiers: mod_bits,
+                item: item.clone(),
+                target_addr,
+            });
+        });
 
         // Add to the app menu (first menu item's submenu)
         if let Some(main_menu) = app.mainMenu() {
@@ -1258,6 +1274,31 @@ fn install_keyboard_shortcut(
                 }
             }
         }
+    }
+}
+
+/// Remove every shortcut that `add_keyboard_shortcut` registered for this key and modifiers,
+/// installed or still buffered, with its menu item and callback.
+pub fn remove_keyboard_shortcut(key_ptr: *const u8, modifiers: f64) {
+    let key = unsafe { str_from_header(key_ptr) }.to_string();
+    let mods = modifiers as u64;
+    PENDING_SHORTCUTS.with(|ps| {
+        ps.borrow_mut()
+            .retain(|s| s.modifiers as u64 != mods || unsafe { str_from_header(s.key_ptr) } != key);
+    });
+    let removed: Vec<InstalledShortcut> = SHORTCUT_ITEMS.with(|items| {
+        let (gone, kept) = items
+            .borrow_mut()
+            .drain(..)
+            .partition(|s| s.key == key && s.modifiers == mods);
+        *items.borrow_mut() = kept;
+        gone
+    });
+    for shortcut in removed {
+        if let Some(menu) = unsafe { shortcut.item.menu() } {
+            menu.removeItem(&shortcut.item);
+        }
+        SHORTCUT_CALLBACKS.with(|cbs| cbs.borrow_mut().remove(&shortcut.target_addr));
     }
 }
 

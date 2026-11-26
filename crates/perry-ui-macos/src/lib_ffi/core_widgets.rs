@@ -441,6 +441,12 @@ pub extern "C" fn perry_ui_clipboard_write(text_ptr: i64) {
     clipboard::write(text_ptr as *const u8);
 }
 
+/// Remove the shortcuts added for this key and modifiers.
+#[no_mangle]
+pub extern "C" fn perry_ui_remove_keyboard_shortcut(key_ptr: i64, modifiers: f64) {
+    app::remove_keyboard_shortcut(key_ptr as *const u8, modifiers);
+}
+
 /// Add a keyboard shortcut to the app menu.
 #[no_mangle]
 pub extern "C" fn perry_ui_add_keyboard_shortcut(key_ptr: i64, modifiers: f64, callback: f64) {

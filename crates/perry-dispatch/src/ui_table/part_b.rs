@@ -797,6 +797,12 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         args: &[ArgKind::Str, ArgKind::F64, ArgKind::Closure],
         ret: ReturnKind::Void,
     },
+    MethodRow {
+        method: "removeKeyboardShortcut",
+        runtime: "perry_ui_remove_keyboard_shortcut",
+        args: &[ArgKind::Str, ArgKind::F64],
+        ret: ReturnKind::Void,
+    },
     // System-wide hotkey — fires even when the app is backgrounded.
     // Real Carbon `RegisterEventHotKey` impl on macOS; no-op stub on all other platforms.
     MethodRow {

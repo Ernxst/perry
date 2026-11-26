@@ -1927,6 +1927,11 @@ export function addKeyboardShortcut(
     modifiers: number,
     callback: () => void,
 ): void;
+/**
+ * Remove the shortcuts `addKeyboardShortcut` added for this key and modifiers, with their
+ * app menu items. macOS only.
+ */
+export function removeKeyboardShortcut(key: string, modifiers: number): void;
 
 // ---------------------------------------------------------------------------
 // Continuous keyboard events (issue #1864)
