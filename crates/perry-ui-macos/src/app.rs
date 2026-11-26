@@ -1801,7 +1801,76 @@ pub fn window_set_size(window_handle: i64, width: f64, height: f64) {
     });
 }
 
+fn app_window() -> Option<Retained<NSWindow>> {
+    APPS.with(|apps| apps.borrow().first().map(|app| app.window.clone()))
+}
+
+pub fn app_window_size() -> (f64, f64) {
+    let Some(window) = app_window() else { return (0.0, 0.0) };
+    let Some(content) = window.contentView() else { return (0.0, 0.0) };
+    let size = content.frame().size;
+    (size.width, size.height)
+}
+
+pub fn screen_scale() -> f64 {
+    let screen: Option<Retained<AnyObject>> = match app_window() {
+        Some(window) => unsafe { objc2::msg_send![&*window, screen] },
+        None => None,
+    };
+    let screen = screen.or_else(|| unsafe { objc2::msg_send![objc2::class!(NSScreen), mainScreen] });
+    match screen {
+        Some(screen) => unsafe { objc2::msg_send![&*screen, backingScaleFactor] },
+        None => 1.0,
+    }
+}
+
+/// Observes every window's resizes and passes on the App window's, so a callback registered
+/// before `App` creates its window still fires.
+pub fn app_on_resize(callback: f64) {
+    extern "C" {
+        fn js_nanbox_get_pointer(value: f64) -> i64;
+        fn js_closure_call0(closure: *const u8, this: perry_ffi::JsThis) -> f64;
+    }
+    let first = APP_RESIZE_CBS.with(|cbs| {
+        let mut cbs = cbs.borrow_mut();
+        cbs.push(callback);
+        cbs.len() == 1
+    });
+    if !first {
+        return;
+    }
+    unsafe {
+        let center: Retained<AnyObject> =
+            objc2::msg_send![objc2::class!(NSNotificationCenter), defaultCenter];
+        let name = NSString::from_str("NSWindowDidResizeNotification");
+        let block = block2::RcBlock::new(move |notification: *const AnyObject| {
+            let resized: *const AnyObject = objc2::msg_send![notification, object];
+            let is_app_window = app_window()
+                .is_some_and(|window| Retained::as_ptr(&window) as *const AnyObject == resized);
+            if !is_app_window {
+                return;
+            }
+            let callbacks = APP_RESIZE_CBS.with(|cbs| cbs.borrow().clone());
+            for callback in callbacks {
+                crate::catch_callback_panic("resize callback", std::panic::AssertUnwindSafe(|| {
+                    let ptr = js_nanbox_get_pointer(callback) as *const u8;
+                    js_closure_call0(ptr, perry_ffi::JsThis::UNDEFINED);
+                }));
+            }
+        });
+        let _: Retained<AnyObject> = objc2::msg_send![
+            &*center,
+            addObserverForName: &*name,
+            object: std::ptr::null::<AnyObject>(),
+            queue: std::ptr::null::<AnyObject>(),
+            usingBlock: &*block
+        ];
+        std::mem::forget(block);
+    }
+}
+
 thread_local! {
+    static APP_RESIZE_CBS: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
     static WINDOW_FOCUS_LOST_CBS: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
 }
 
@@ -1864,6 +1933,11 @@ pub(crate) fn scan_macos_app_gc_roots(visitor: &mut perry_ffi::GcRootVisitor<'_>
     });
     TIMER_CALLBACKS.with(|callbacks| {
         for callback in callbacks.borrow_mut().values_mut() {
+            visitor.visit_nanbox_f64_slot(callback);
+        }
+    });
+    APP_RESIZE_CBS.with(|callbacks| {
+        for callback in callbacks.borrow_mut().iter_mut() {
             visitor.visit_nanbox_f64_slot(callback);
         }
     });

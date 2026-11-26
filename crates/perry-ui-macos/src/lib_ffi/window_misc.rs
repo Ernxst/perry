@@ -5,6 +5,30 @@ use crate::*;
 // Multi-Window
 // =============================================================================
 
+/// The width of the App window's content, in points; 0 before `App` opens it.
+#[no_mangle]
+pub extern "C" fn perry_ui_app_window_width() -> f64 {
+    app::app_window_size().0
+}
+
+/// The height of the App window's content, in points; 0 before `App` opens it.
+#[no_mangle]
+pub extern "C" fn perry_ui_app_window_height() -> f64 {
+    app::app_window_size().1
+}
+
+/// Call `callback` with no arguments after the App window resizes. It may be registered before `App`.
+#[no_mangle]
+pub extern "C" fn perry_ui_app_on_resize(callback: f64) {
+    app::app_on_resize(callback);
+}
+
+/// Pixels per point on the App window's screen, or the main screen's before `App` opens it.
+#[no_mangle]
+pub extern "C" fn perry_ui_screen_scale() -> f64 {
+    app::screen_scale()
+}
+
 /// Create a new window. Returns window handle.
 #[no_mangle]
 pub extern "C" fn perry_ui_window_create(title_ptr: i64, width: f64, height: f64) -> i64 {

@@ -328,6 +328,30 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::Widget,
     },
     MethodRow {
+        method: "appWindowWidth",
+        runtime: "perry_ui_app_window_width",
+        args: &[],
+        ret: ReturnKind::F64,
+    },
+    MethodRow {
+        method: "appWindowHeight",
+        runtime: "perry_ui_app_window_height",
+        args: &[],
+        ret: ReturnKind::F64,
+    },
+    MethodRow {
+        method: "appOnResize",
+        runtime: "perry_ui_app_on_resize",
+        args: &[ArgKind::Closure],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
+        method: "screenScale",
+        runtime: "perry_ui_screen_scale",
+        args: &[],
+        ret: ReturnKind::F64,
+    },
+    MethodRow {
         method: "sliderSetStep",
         runtime: "perry_ui_slider_set_step",
         args: &[ArgKind::Widget, ArgKind::F64],

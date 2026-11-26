@@ -2051,6 +2051,14 @@ export function onActivate(callback: () => void): void;
 // Timer
 // ---------------------------------------------------------------------------
 
+/** The App window's content width in points; 0 before `App` opens it. */
+export function appWindowWidth(): number;
+/** The App window's content height in points; 0 before `App` opens it. */
+export function appWindowHeight(): number;
+/** Call `callback` after the App window resizes. It may be registered before `App`. */
+export function appOnResize(callback: () => void): void;
+/** Pixels per point on the App window's screen, or the main screen's before `App` opens it. */
+export function screenScale(): number;
 /**
  * Schedule a recurring callback on the UI main thread (#389).
  *
