@@ -279,6 +279,13 @@ pub extern "C" fn perry_ui_slider_create(min: f64, max: f64, on_change: f64) -> 
     widgets::slider::create(min, max, min, on_change)
 }
 
+/// Snap a Slider's value to multiples of `step` from its minimum. A step of 0 or less lets it
+/// slide freely.
+#[no_mangle]
+pub extern "C" fn perry_ui_slider_set_step(handle: i64, step: f64) {
+    widgets::slider::set_step(handle, step);
+}
+
 // =============================================================================
 // Phase 4: Advanced Reactive UI
 // =============================================================================

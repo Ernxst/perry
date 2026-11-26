@@ -9,6 +9,7 @@ use std::collections::HashMap;
 thread_local! {
     /// Map from target object address to closure pointer (f64 NaN-boxed)
     static SLIDER_CALLBACKS: RefCell<HashMap<usize, f64>> = RefCell::new(HashMap::new());
+    static SLIDER_STEPS: RefCell<HashMap<usize, f64>> = RefCell::new(HashMap::new());
 }
 
 pub(crate) fn scan_macos_slider_gc_roots(visitor: &mut perry_ffi::GcRootVisitor<'_>) {
@@ -46,7 +47,7 @@ define_class!(
                 // "RefCell already borrowed" while the borrow was held.
                 let callback = SLIDER_CALLBACKS.with(|cbs| cbs.borrow().get(&key).copied());
                 if let Some(closure_f64) = callback {
-                    let value: f64 = unsafe { msg_send![sender, doubleValue] };
+                    let value = snap_to_step(sender);
 
                     let closure_ptr = unsafe { js_nanbox_get_pointer(closure_f64) };
                     unsafe {
@@ -64,6 +65,31 @@ impl PerrySliderTarget {
             callback_key: std::cell::Cell::new(0),
         });
         unsafe { msg_send![super(this), init] }
+    }
+}
+
+/// The slider's value, moved to the nearest step when it has one.
+fn snap_to_step(sender: &AnyObject) -> f64 {
+    let value: f64 = unsafe { msg_send![sender, doubleValue] };
+    let step = SLIDER_STEPS.with(|steps| steps.borrow().get(&(sender as *const AnyObject as usize)).copied());
+    let Some(step) = step else { return value };
+    let min: f64 = unsafe { msg_send![sender, minValue] };
+    let max: f64 = unsafe { msg_send![sender, maxValue] };
+    let snapped = (min + ((value - min) / step).round() * step).clamp(min, max);
+    if snapped != value {
+        let _: () = unsafe { msg_send![sender, setDoubleValue: snapped] };
+    }
+    snapped
+}
+
+/// Snap a slider to multiples of `step` from its minimum; a step of 0 or less removes the snap.
+pub fn set_step(handle: i64, step: f64) {
+    if let Some(view) = super::get_widget(handle) {
+        let key = Retained::as_ptr(&view) as usize;
+        SLIDER_STEPS.with(|steps| {
+            let mut steps = steps.borrow_mut();
+            if step > 0.0 { steps.insert(key, step); } else { steps.remove(&key); }
+        });
     }
 }
 

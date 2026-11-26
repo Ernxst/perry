@@ -328,6 +328,12 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::Widget,
     },
     MethodRow {
+        method: "sliderSetStep",
+        runtime: "perry_ui_slider_set_step",
+        args: &[ArgKind::Widget, ArgKind::F64],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "SecureField",
         runtime: "perry_ui_securefield_create",
         args: &[ArgKind::Str, ArgKind::Closure],

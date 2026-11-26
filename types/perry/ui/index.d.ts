@@ -460,6 +460,8 @@ export function toggleSetState(widget: Widget, on: number): void;
 
 /** Numeric slider. */
 export function Slider(min: number, max: number, onChange: (value: number) => void): Widget;
+/** Snap a slider to multiples of `step` from its minimum; 0 lets it slide freely. */
+export function sliderSetStep(slider: Widget, step: number): void;
 
 /** Scrollable container. */
 export function ScrollView(): Widget;
