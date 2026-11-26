@@ -483,15 +483,11 @@ function loadImage(image: Picture): void {
   image.inner = 0;
   if (!image.src) return;
   // Other sources are files in the app bundle's Resources, where Vite's public/ folder is copied.
-  if (/^(https?|data):/.test(image.src)) {
-    const inner = Image(image.src, image.alt);
-    image.inner = inner;
-    imageSetOnLoad(inner, loaded => {
-      if (image.inner === inner) image.emit(loaded ? "onLoad" : "onError", { value: "", checked: false });
-    });
-  } else {
-    image.inner = ImageFile(image.src.replace(/^\//, ""));
-  }
+  const inner = /^(https?|data):/.test(image.src) ? Image(image.src, image.alt) : ImageFile(image.src.replace(/^\//, ""));
+  image.inner = inner;
+  imageSetOnLoad(inner, loaded => {
+    if (image.inner === inner) image.emit(loaded ? "onLoad" : "onError", { value: "", checked: false });
+  });
   widgetAddChild(image.wrapper, image.inner);
   sizeImage(image);
 }
