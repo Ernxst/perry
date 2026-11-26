@@ -157,20 +157,6 @@ pub fn set_child(scroll_handle: i64, child_handle: i64) {
     }
 }
 
-/// Scroll so that the given child widget is visible.
-pub fn scroll_to(scroll_handle: i64, child_handle: i64) {
-    if let (Some(scroll_view), Some(child)) = (
-        super::get_widget(scroll_handle),
-        super::get_widget(child_handle),
-    ) {
-        unsafe {
-            let _sv: &NSScrollView = &*(Retained::as_ptr(&scroll_view) as *const NSScrollView);
-            let child_frame: CGRect = msg_send![&*child, frame];
-            let _: () = msg_send![&*child, scrollRectToVisible: child_frame];
-        }
-    }
-}
-
 /// Get the vertical scroll offset (contentView.bounds.origin.y).
 pub fn get_offset(scroll_handle: i64) -> f64 {
     if let Some(scroll_view) = super::get_widget(scroll_handle) {
@@ -185,14 +171,17 @@ pub fn get_offset(scroll_handle: i64) -> f64 {
     }
 }
 
-/// Set the vertical scroll offset.
-pub fn set_offset(scroll_handle: i64, offset: f64) {
+/// Scroll so the content's point `(x, y)` sits at the top left, kept within the content.
+pub fn set_offset(scroll_handle: i64, x: f64, y: f64) {
     if let Some(scroll_view) = super::get_widget(scroll_handle) {
         unsafe {
             let sv: &NSScrollView = &*(Retained::as_ptr(&scroll_view) as *const NSScrollView);
             let content_view = sv.contentView();
-            let point = CGPoint::new(0.0, offset);
-            let _: () = msg_send![&*content_view, setBoundsOrigin: point];
+            let wanted: CGRect = msg_send![&*content_view, bounds];
+            let wanted = CGRect::new(CGPoint::new(x, y), wanted.size);
+            let constrained: CGRect = msg_send![&*content_view, constrainBoundsRect: wanted];
+            let _: () = msg_send![&*content_view, scrollToPoint: constrained.origin];
+            let _: () = msg_send![sv, reflectScrolledClipView: &*content_view];
         }
     }
 }

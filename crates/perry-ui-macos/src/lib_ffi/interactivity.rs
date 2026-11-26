@@ -32,8 +32,8 @@ pub extern "C" fn perry_ui_textfield_get_selection_end(handle: i64) -> f64 {
 
 /// Scroll a ScrollView to make a child visible.
 #[no_mangle]
-pub extern "C" fn perry_ui_scrollview_scroll_to(scroll_handle: i64, child_handle: i64) {
-    widgets::scrollview::scroll_to(scroll_handle, child_handle);
+pub extern "C" fn perry_ui_scrollview_scroll_to(scroll_handle: i64, x: f64, y: f64) {
+    widgets::scrollview::set_offset(scroll_handle, x, y);
 }
 
 /// Get the vertical scroll offset.
@@ -44,8 +44,8 @@ pub extern "C" fn perry_ui_scrollview_get_offset(scroll_handle: i64) -> f64 {
 
 /// Set the vertical scroll offset.
 #[no_mangle]
-pub extern "C" fn perry_ui_scrollview_set_offset(scroll_handle: i64, offset: f64) {
-    widgets::scrollview::set_offset(scroll_handle, offset);
+pub extern "C" fn perry_ui_scrollview_set_offset(scroll_handle: i64, x: f64, y: f64) {
+    widgets::scrollview::set_offset(scroll_handle, x, y);
 }
 
 // =============================================================================
