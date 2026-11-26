@@ -188,17 +188,21 @@ export function createNativeRenderer(driver: NativeDriver) {
     if (!kind) throw new Error(`Unsupported element <${tag}>`);
     // A text element nested in another has no widget of its own, and whether one holds
     // other elements picks its widget, so its widget waits until it joins a stack.
-    if (kind === "Text") return makeNode(kind, "", tag);
+    if (kind === "Text") return withElement(kind, tag, 0);
     let node: NativeNode;
     const handle = driver.create(kind, tag, (handler, state) => emitter(node)(handler, state));
-    const element = driver.element?.(kind, handle);
-    node = element ? Object.assign(element, makeNode(kind, "", tag)) : makeNode(kind, "", tag);
+    node = withElement(kind, tag, handle);
     // A native button's dispatcher outlives a removed Solid owner. Release
     // user callbacks when that owner is disposed, even before native detach.
     if (getOwner()) onCleanup(() => { node.props = {}; });
     node.handle = handle;
     node.materialized = true;
     return node;
+  }
+
+  function withElement(kind: ElementName, tag: string, handle: number): NativeNode {
+    const element = driver.element?.(kind, handle);
+    return element ? Object.assign(element, makeNode(kind, "", tag)) : makeNode(kind, "", tag);
   }
 
   function materialize(node: NativeNode): number {

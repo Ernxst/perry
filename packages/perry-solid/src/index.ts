@@ -9,7 +9,7 @@ import {
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetOnClick,
-  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetMaxWidthAlignment, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
+  widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetMaxWidthAlignment, widgetGetFrame, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
   currentModifiers, widgetSetOnMouseDown, type PointerEvent, type State, type Widget,
@@ -764,9 +764,24 @@ function hideDialog(dialog: Dialog): boolean {
   return true;
 }
 
-/** What a dialog's `ref` gets natively: the HTMLDialogElement methods both builds support. */
-class DialogElement {
+/** What an element's `ref` gets natively: its size and position after layout, in points. */
+class MeasuredElement {
   declare handle: number;
+  getBoundingClientRect(): { x: number; y: number; left: number; top: number; right: number; bottom: number; width: number; height: number } {
+    const x = widgetGetFrame(this.handle as unknown as Widget, 0);
+    const y = widgetGetFrame(this.handle as unknown as Widget, 1);
+    const width = widgetGetFrame(this.handle as unknown as Widget, 2);
+    const height = widgetGetFrame(this.handle as unknown as Widget, 3);
+    return { x, y, left: x, top: y, right: x + width, bottom: y + height, width, height };
+  }
+  get offsetWidth(): number { return Math.round(widgetGetFrame(this.handle as unknown as Widget, 2)); }
+  get offsetHeight(): number { return Math.round(widgetGetFrame(this.handle as unknown as Widget, 3)); }
+  get clientWidth(): number { return this.offsetWidth; }
+  get clientHeight(): number { return this.offsetHeight; }
+}
+
+/** What a dialog's `ref` gets natively: the HTMLDialogElement methods both builds support. */
+class DialogElement extends MeasuredElement {
   returnValue = "";
   get open(): boolean { return dialogs.get(this.handle)!.open; }
   show(): void { showDialog(dialogs.get(this.handle)!, false); }
@@ -1145,7 +1160,7 @@ const driver: NativeDriver = {
   },
   element(kind, handle) {
     if (kind === "Dialog") return new DialogElement();
-    if (kind !== "Canvas") return undefined;
+    if (kind !== "Canvas") return new MeasuredElement();
     const canvas = new CanvasElement(handle);
     canvases.set(handle, canvas);
     return canvas;
