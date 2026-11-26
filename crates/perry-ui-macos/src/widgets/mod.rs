@@ -590,6 +590,7 @@ pub fn add_child_at(parent_handle: i64, child_handle: i64, index: i64) {
             let count = stack.viewsInGravity(NSStackViewGravity::Top).len();
             let index = index.max(0) as usize;
             stack.insertView_atIndex_inGravity(&child, index.min(count), NSStackViewGravity::Top);
+            scrollview::fit_row_if_scroll_column(&parent, &child);
             refresh_stack_parent_map(parent_handle, stack);
         } else if zstack::is_zstack(parent_handle) {
             zstack::add_child(parent_handle, child_handle);

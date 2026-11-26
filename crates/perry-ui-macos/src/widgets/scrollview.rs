@@ -73,7 +73,7 @@ pub fn create() -> i64 {
 
 /// Set the document (content) view of a scroll view.
 /// Uses a flipped wrapper + Auto Layout for top-origin scrolling.
-/// Changes distribution to GravityAreas and sets minimum row heights on children.
+/// Changes distribution to GravityAreas and fits each row of the content column; see `fit_row`.
 pub fn set_child(scroll_handle: i64, child_handle: i64) {
     if let (Some(scroll_view), Some(child)) = (
         super::get_widget(scroll_handle),
@@ -127,34 +127,55 @@ pub fn set_child(scroll_handle: i64, child_handle: i64) {
             let c5: Retained<AnyObject> = msg_send![&*wrap_w, constraintEqualToAnchor: &*clip_w];
             let _: () = msg_send![&*c5, setActive: true];
 
-            // If NSStackView, switch to GravityAreas, stretch children to fill width
             let content = super::get_widget(child_handle).unwrap();
             let stack_cls = AnyClass::get(c"NSStackView");
             if let Some(cls) = stack_cls {
                 if (*content).isKindOfClass(cls) {
                     // GravityAreas: children use intrinsic height
                     let _: () = msg_send![&*content, setDistribution: -1_isize];
-                    // Change alignment from Leading to Width so children fill cross-axis
-                    // NSLayoutAttribute: Leading=5, Width=7 (fills cross-axis)
-                    let _: () = msg_send![&*content, setAlignment: 7_isize];
-
+                    SCROLL_COLUMNS.with(|c| c.borrow_mut().insert(Retained::as_ptr(&content) as usize));
                     let arranged: Retained<AnyObject> = msg_send![&*content, arrangedSubviews];
                     let n: usize = msg_send![&*arranged, count];
                     for i in 0..n {
                         let subview: *mut AnyObject = msg_send![&*arranged, objectAtIndex: i];
-                        if subview.is_null() {
-                            continue;
+                        if !subview.is_null() {
+                            fit_row(&*content as *const NSView as *const AnyObject, subview);
                         }
-                        // Set minimum height 24px on each arranged subview
-                        let sub_h: Retained<AnyObject> = msg_send![subview, heightAnchor];
-                        let hc: Retained<AnyObject> =
-                            msg_send![&*sub_h, constraintGreaterThanOrEqualToConstant: 24.0_f64];
-                        let _: () = msg_send![&*hc, setActive: true];
                     }
                 }
             }
         }
     }
+}
+
+thread_local! {
+    /// The stacks that `set_child` made a scroll view's content, whose rows fill its width.
+    static SCROLL_COLUMNS: RefCell<std::collections::HashSet<usize>> = RefCell::new(Default::default());
+}
+
+/// Gives a row of a scroll view's content column the column's width inside its padding and a minimum height of
+/// 24 points. NSStackView has no fill alignment, so the width is a constraint on each row,
+/// added again for each row inserted later.
+pub(crate) fn fit_row_if_scroll_column(stack: &NSView, row: &NSView) {
+    let ptr = stack as *const NSView as usize;
+    if SCROLL_COLUMNS.with(|c| c.borrow().contains(&ptr)) {
+        unsafe { fit_row(stack as *const NSView as *const AnyObject, row as *const NSView as *mut AnyObject) };
+    }
+}
+
+unsafe fn fit_row(stack: *const AnyObject, row: *mut AnyObject) {
+    let row_w: Retained<AnyObject> = msg_send![row, widthAnchor];
+    let stack_w: Retained<AnyObject> = msg_send![stack, widthAnchor];
+    let insets: objc2_foundation::NSEdgeInsets = msg_send![stack, edgeInsets];
+    let width: Retained<AnyObject> = msg_send![
+        &*row_w,
+        constraintEqualToAnchor: &*stack_w,
+        constant: -(insets.left + insets.right)
+    ];
+    let _: () = msg_send![&*width, setActive: true];
+    let row_h: Retained<AnyObject> = msg_send![row, heightAnchor];
+    let height: Retained<AnyObject> = msg_send![&*row_h, constraintGreaterThanOrEqualToConstant: 24.0_f64];
+    let _: () = msg_send![&*height, setActive: true];
 }
 
 /// Get the vertical scroll offset (contentView.bounds.origin.y).
