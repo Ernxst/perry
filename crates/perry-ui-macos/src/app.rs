@@ -99,6 +99,7 @@ pub fn app_create(title_ptr: *const u8, width: f64, height: f64) -> i64 {
 
         let ns_title = NSString::from_str(&title);
         window.setTitle(&ns_title);
+        crate::pointer::prime_window(Retained::as_ptr(&window) as *mut AnyObject);
 
         // Keep the window's appearance unset so it inherits NSApp's effective
         // appearance. AppKit follows the system by default and honors an
@@ -1701,6 +1702,7 @@ pub fn window_create(title_ptr: *const u8, width: f64, height: f64) -> i64 {
 
         let ns_title = NSString::from_str(&title);
         window.setTitle(&ns_title);
+        crate::pointer::prime_window(Retained::as_ptr(&window) as *mut AnyObject);
 
         WINDOWS.with(|w| {
             let mut windows = w.borrow_mut();

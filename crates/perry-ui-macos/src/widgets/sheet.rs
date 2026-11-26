@@ -40,6 +40,7 @@ pub fn create(body_handle: i64, width: f64, height: f64) -> i64 {
         // sheets typically render without titlebar text anyway.
         let ns_title = NSString::from_str("");
         panel.setTitle(&ns_title);
+        crate::pointer::prime_window(Retained::as_ptr(&panel) as *mut AnyObject);
 
         if let Some(view) = super::get_widget(body_handle) {
             panel.setContentView(Some(&view));

@@ -150,18 +150,23 @@ fn install_monitor_once() {
 fn prime_window_for_view(view: &NSView) {
     unsafe {
         let window: *mut AnyObject = msg_send![view, window];
-        if window.is_null() {
-            // Will be primed lazily once the view enters a window —
-            // the monitor still sees down/up events even without this.
-            return;
+        if !window.is_null() {
+            prime_window(window);
         }
-        let already = WINDOWS_PRIMED.with(|s| s.borrow().contains(&(window as usize)));
-        if !already {
+    }
+}
+
+/// Turn on mouse-moved events for a window. Every window Perry creates calls this, since a
+/// widget's hover or move callback is often registered before the widget joins a window.
+pub(crate) fn prime_window(window: *mut AnyObject) {
+    let already = WINDOWS_PRIMED.with(|s| s.borrow().contains(&(window as usize)));
+    if !already {
+        unsafe {
             let _: () = msg_send![window, setAcceptsMouseMovedEvents: true];
-            WINDOWS_PRIMED.with(|s| {
-                s.borrow_mut().insert(window as usize);
-            });
         }
+        WINDOWS_PRIMED.with(|s| {
+            s.borrow_mut().insert(window as usize);
+        });
     }
 }
 
@@ -224,11 +229,6 @@ unsafe fn handle_event(event: *mut AnyObject) {
         _ => return,
     };
 
-    let entries = registry();
-    if entries.is_empty() {
-        return;
-    }
-
     let is_move = matches!(
         event_type,
         NS_EVENT_TYPE_MOUSE_MOVED
@@ -237,21 +237,20 @@ unsafe fn handle_event(event: *mut AnyObject) {
             | NS_EVENT_TYPE_OTHER_MOUSE_DRAGGED
     );
 
-    // On any move event, also drive `onHover(isHovering)` transitions
-    // — we re-use the same hit-test the move callback runs. Walking
-    // HOVER_CB once per move keeps the work O(n_hover_widgets), which
-    // is typically a handful even in big UIs.
+    // Hover runs on every move, whether or not any widget has a move callback.
     if is_move {
         dispatch_hover_transitions(window, win_loc);
     }
+
+    let entries = registry();
 
     for (handle, closure_f64) in entries {
         let Some(view) = get_widget(handle) else {
             continue;
         };
-        // Only fire for widgets that live in the event's window.
+        // Only fire for shown widgets that live in the event's window.
         let view_window: *mut AnyObject = msg_send![&*view, window];
-        if view_window != window {
+        if view_window != window || view.isHiddenOrHasHiddenAncestor() {
             continue;
         }
         // Convert window-coords → view-local (NSView's `convertPoint:fromView:`
@@ -314,7 +313,10 @@ unsafe fn dispatch_hover_transitions(event_window: *mut AnyObject, win_loc: CGPo
             continue;
         };
         let view_window: *mut AnyObject = msg_send![&*view, window];
-        let inside = if view_window == event_window && !event_window.is_null() {
+        let inside = if view_window == event_window
+            && !event_window.is_null()
+            && !view.isHiddenOrHasHiddenAncestor()
+        {
             let local: CGPoint = msg_send![
                 &*view,
                 convertPoint: win_loc,
