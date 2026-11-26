@@ -53,42 +53,36 @@ pub fn create(body_handle: i64, width: f64, height: f64) -> i64 {
     }
 }
 
-/// Present a sheet on the key window.
+/// Present a sheet on the key window, or on the main window or any window while the app is
+/// in the background and has no key window.
 pub fn present(sheet_handle: i64) {
     let mtm = MainThreadMarker::new().expect("perry/ui must run on the main thread");
     let app = NSApplication::sharedApplication(mtm);
 
-    SHEETS.with(|s| {
-        let sheets = s.borrow();
-        let idx = (sheet_handle - 1) as usize;
-        if idx < sheets.len() {
-            let sheet = &sheets[idx];
-            unsafe {
-                if let Some(key_window) = app.keyWindow() {
-                    let _: () = msg_send![&*key_window, beginSheet: &**sheet, completionHandler: std::ptr::null::<AnyObject>()];
-                }
-            }
+    let sheet = SHEETS.with(|s| s.borrow().get((sheet_handle - 1) as usize).cloned());
+    let Some(sheet) = sheet else { return };
+    let parent = app
+        .keyWindow()
+        .or_else(|| app.mainWindow())
+        .or_else(|| app.windows().iter().find(|w| w.isVisible() && **w != *sheet));
+    if let Some(parent) = parent {
+        unsafe {
+            let _: () = msg_send![&*parent, beginSheet: &*sheet, completionHandler: std::ptr::null::<AnyObject>()];
         }
-    });
+    }
 }
 
-/// Dismiss a sheet.
+/// Dismiss a sheet. The window it's attached to ends it: while a sheet shows, the key window
+/// is the sheet itself, which has no sheet of its own to end.
 pub fn dismiss(sheet_handle: i64) {
-    let mtm = MainThreadMarker::new().expect("perry/ui must run on the main thread");
-    let app = NSApplication::sharedApplication(mtm);
-
-    SHEETS.with(|s| {
-        let sheets = s.borrow();
-        let idx = (sheet_handle - 1) as usize;
-        if idx < sheets.len() {
-            let sheet = &sheets[idx];
+    let sheet = SHEETS.with(|s| s.borrow().get((sheet_handle - 1) as usize).cloned());
+    if let Some(sheet) = sheet {
+        if let Some(parent) = sheet.sheetParent() {
             unsafe {
-                if let Some(key_window) = app.keyWindow() {
-                    let _: () = msg_send![&*key_window, endSheet: &**sheet];
-                }
+                let _: () = msg_send![&*parent, endSheet: &*sheet];
             }
         }
-    });
+    }
 }
 
 /// Set the body of a sheet (set content view to a widget).
