@@ -4,7 +4,7 @@ import {
   Text, Button, Divider, BloomView, TextField, SecureField, TextArea, Toggle, Slider, Picker, DatePicker,
   Image, ImageFile, ProgressView, AttributedText, attributedTextAppend, attributedTextClear,
   textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetFontFamily, textSetColor, textSetDecoration, textSetWraps,
-  textfieldSetString, textareaSetString, toggleSetState, pickerAddItem, pickerSetSelected, datePickerSetDate,
+  textfieldSetString, textareaSetString, toggleSetState, sliderSetStep, pickerAddItem, pickerSetSelected, datePickerSetDate,
   textfieldSetOnSubmit, WebView, webviewLoadUrl, Combobox, comboboxAddItem, comboboxSetValue,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
@@ -391,10 +391,11 @@ function applyControl(control: Control): void {
     else if (type === "combobox") comboboxSetValue(inner, control.shown);
     else textfieldSetString(inner, control.shown);
   }
-  if (props.disabled != null) {
-    // perry/ui panics when enabling or disabling a Toggle.
-    if (type === "checkbox") throw new Error("disabled is unsupported on <input type=\"checkbox\">");
-    widgetSetEnabled(inner, props.disabled ? 0 : 1);
+  if (props.disabled != null) widgetSetEnabled(inner, props.disabled ? 0 : 1);
+  if (type === "range") {
+    // A range input steps by 1 unless told otherwise, and slides freely with step="any".
+    const step = props.step == null ? 1 : Number(props.step);
+    sliderSetStep(inner, step > 0 ? step : 0);
   }
   widgetSetHidden(control.wrapper, props.hidden ? 1 : 0);
   if (props.title != null) widgetSetTooltip(inner, String(props.title));
