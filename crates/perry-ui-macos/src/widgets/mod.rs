@@ -1124,11 +1124,31 @@ extern "C" {
     fn js_nanbox_get_pointer(value: f64) -> i64;
 }
 
-/// Set the enabled state of any NSControl-based widget.
+/// Set the enabled state of a widget. A control takes it directly; a text view, such as the one
+/// inside a `TextArea`'s scroll view, stops being editable and selectable; any other view, such
+/// as the stack around a `Toggle`'s switch, passes it to its subviews.
 pub fn set_enabled(handle: i64, enabled: bool) {
     if let Some(view) = get_widget(handle) {
-        unsafe {
-            let _: () = objc2::msg_send![&*view, setEnabled: enabled];
+        set_view_enabled(&view, enabled);
+    }
+}
+
+fn set_view_enabled(view: &NSView, enabled: bool) {
+    unsafe {
+        if view.respondsToSelector(objc2::sel!(setEnabled:)) {
+            let _: () = objc2::msg_send![view, setEnabled: enabled];
+        } else if view.respondsToSelector(objc2::sel!(setEditable:)) {
+            let _: () = objc2::msg_send![view, setEditable: enabled];
+            let _: () = objc2::msg_send![view, setSelectable: enabled];
+        } else if view.respondsToSelector(objc2::sel!(documentView)) {
+            let document: Option<Retained<NSView>> = objc2::msg_send![view, documentView];
+            if let Some(document) = document {
+                set_view_enabled(&document, enabled);
+            }
+        } else {
+            for subview in view.subviews().iter() {
+                set_view_enabled(&subview, enabled);
+            }
         }
     }
 }
