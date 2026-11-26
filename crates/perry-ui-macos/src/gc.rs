@@ -30,6 +30,7 @@ fn scan_roots(visitor: &mut GcRootVisitor<'_>) {
     crate::widgets::button::scan_macos_button_gc_roots(visitor);
     crate::widgets::calendar::scan_macos_calendar_gc_roots(visitor);
     crate::widgets::combobox::scan_macos_combobox_gc_roots(visitor);
+    crate::widgets::image::scan_macos_image_gc_roots(visitor);
     crate::widgets::command_palette::scan_macos_command_palette_gc_roots(visitor);
     crate::widgets::date_picker::scan_macos_date_picker_gc_roots(visitor);
     crate::widgets::image_gallery::scan_macos_image_gallery_gc_roots(visitor);

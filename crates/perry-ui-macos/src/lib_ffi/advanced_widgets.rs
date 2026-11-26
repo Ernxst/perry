@@ -42,6 +42,12 @@ pub extern "C" fn perry_ui_image_create_url(url_ptr: i64, alt_ptr: i64) -> i64 {
     widgets::image::create_url(url_ptr as *const u8, alt_ptr as *const u8)
 }
 
+/// Call `callback` with 1 once a URL image loads, or 0 when it fails.
+#[no_mangle]
+pub extern "C" fn perry_ui_image_set_on_load(handle: i64, callback: f64) {
+    widgets::image::set_on_load(handle, callback);
+}
+
 /// Set the size of an Image widget.
 #[no_mangle]
 pub extern "C" fn perry_ui_image_set_size(handle: i64, width: f64, height: f64) {

@@ -1492,6 +1492,12 @@ export function stateBindTextfield(state: State<string>, textfield: Widget): voi
 // ---------------------------------------------------------------------------
 
 export function imageSetSize(image: Widget, width: number, height: number): void;
+/**
+ * Call `callback` once an `Image` made from a URL has loaded, with 1, or failed to download
+ * or decode, with 0. Set it straight after `Image`: the result arrives on a later turn of the
+ * run loop. A later call replaces the callback. macOS only.
+ */
+export function imageSetOnLoad(image: Widget, callback: (loaded: number) => void): void;
 export function imageSetTint(image: Widget, r: number, g: number, b: number, a: number): void;
 
 // ---------------------------------------------------------------------------

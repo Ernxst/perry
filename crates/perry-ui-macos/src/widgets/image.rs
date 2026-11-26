@@ -4,6 +4,41 @@ use objc2::rc::Retained;
 use objc2::MainThreadOnly;
 use objc2_app_kit::{NSImage, NSImageView, NSView};
 use objc2_foundation::{MainThreadMarker, NSString};
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+extern "C" {
+    fn js_closure_call1(closure: *const u8, this: perry_ffi::JsThis, arg: f64) -> f64;
+    fn js_nanbox_get_pointer(value: f64) -> i64;
+}
+
+thread_local! {
+    static LOAD_CALLBACKS: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
+}
+
+pub(crate) fn scan_macos_image_gc_roots(visitor: &mut perry_ffi::GcRootVisitor<'_>) {
+    LOAD_CALLBACKS.with(|callbacks| {
+        for callback in callbacks.borrow_mut().values_mut() {
+            visitor.visit_nanbox_f64_slot(callback);
+        }
+    });
+}
+
+/// Call `callback` once a URL image created by `create_url` has loaded, with 1, or failed to
+/// download or decode, with 0. A later call replaces the callback.
+pub fn set_on_load(handle: i64, callback: f64) {
+    LOAD_CALLBACKS.with(|c| c.borrow_mut().insert(handle, callback));
+}
+
+fn report_load(handle: i64, loaded: bool) {
+    let Some(callback) = LOAD_CALLBACKS.with(|c| c.borrow().get(&handle).copied()) else {
+        return;
+    };
+    crate::catch_callback_panic("image load callback", std::panic::AssertUnwindSafe(|| unsafe {
+        let closure = js_nanbox_get_pointer(callback) as *const u8;
+        js_closure_call1(closure, perry_ffi::JsThis::UNDEFINED, if loaded { 1.0 } else { 0.0 });
+    }));
+}
 
 /// Extract a &str from a *const StringHeader pointer.
 pub(crate) use perry_ffi::copy_string_from_raw as str_from_header;
@@ -168,84 +203,79 @@ fn load_remote(handle: i64, url: String) {
 
     std::thread::spawn(move || {
         let bytes_opt: Option<Vec<u8>> = unsafe {
-            let url_cls = match objc2::runtime::AnyClass::get(c"NSURL") {
-                Some(c) => c,
-                None => return,
-            };
-            let ns: Retained<NSString> = NSString::from_str(&url);
-            let nsurl: *mut objc2::runtime::AnyObject = msg_send![url_cls, URLWithString: &*ns];
-            if nsurl.is_null() {
-                return;
-            }
-            let data_cls = match objc2::runtime::AnyClass::get(c"NSData") {
-                Some(c) => c,
-                None => return,
-            };
-            let data: *mut objc2::runtime::AnyObject =
-                msg_send![data_cls, dataWithContentsOfURL: nsurl];
-            if data.is_null() {
-                return;
-            }
-            let len: usize = msg_send![data, length];
-            if len == 0 {
-                return;
-            }
-            let raw: *const u8 = msg_send![data, bytes];
-            if raw.is_null() {
-                return;
-            }
-            Some(std::slice::from_raw_parts(raw, len).to_vec())
-        };
-
-        let bytes = match bytes_opt {
-            Some(b) => b,
-            None => return,
+            (|| {
+                let url_cls = objc2::runtime::AnyClass::get(c"NSURL")?;
+                let ns: Retained<NSString> = NSString::from_str(&url);
+                let nsurl: *mut objc2::runtime::AnyObject = msg_send![url_cls, URLWithString: &*ns];
+                if nsurl.is_null() {
+                    return None;
+                }
+                let data_cls = objc2::runtime::AnyClass::get(c"NSData")?;
+                let data: *mut objc2::runtime::AnyObject =
+                    msg_send![data_cls, dataWithContentsOfURL: nsurl];
+                if data.is_null() {
+                    return None;
+                }
+                let len: usize = msg_send![data, length];
+                let raw: *const u8 = msg_send![data, bytes];
+                if len == 0 || raw.is_null() {
+                    return None;
+                }
+                Some(std::slice::from_raw_parts(raw, len).to_vec())
+            })()
         };
 
         struct Apply {
             handle: i64,
-            bytes: Vec<u8>,
+            bytes: Option<Vec<u8>>,
         }
-        let apply = Box::into_raw(Box::new(Apply { handle, bytes }));
+        let apply = Box::into_raw(Box::new(Apply { handle, bytes: bytes_opt }));
 
         unsafe extern "C" fn finish(ctx: *mut std::ffi::c_void) {
-            let _ = std::panic::catch_unwind(|| {
-                let p = unsafe { Box::from_raw(ctx as *mut Apply) };
+            let p = unsafe { Box::from_raw(ctx as *mut Apply) };
+            let handle = p.handle;
+            let loaded = std::panic::catch_unwind(move || {
+                let bytes = p.bytes?;
                 unsafe {
-                    let view = match super::get_widget(p.handle) {
+                    let view = match super::get_widget(handle) {
                         Some(v) => v,
-                        None => return,
+                        None => return None,
                     };
                     // #3073: `setImage:` below is NSImageView-only. If the
                     // handle no longer resolves to an image view, skip the
                     // apply rather than risk a method-not-found abort.
                     if !is_image_view(&view) {
-                        return;
+                        return None;
                     }
                     let ns_data_cls = match objc2::runtime::AnyClass::get(c"NSData") {
                         Some(c) => c,
-                        None => return,
+                        None => return None,
                     };
                     let ns_data: *mut objc2::runtime::AnyObject = msg_send![
                         ns_data_cls,
-                        dataWithBytes: p.bytes.as_ptr() as *const std::ffi::c_void,
-                        length: p.bytes.len()
+                        dataWithBytes: bytes.as_ptr() as *const std::ffi::c_void,
+                        length: bytes.len()
                     ];
                     if ns_data.is_null() {
-                        return;
+                        return None;
                     }
                     let image_cls = match objc2::runtime::AnyClass::get(c"NSImage") {
                         Some(c) => c,
-                        None => return,
+                        None => return None,
                     };
                     let img: *mut objc2::runtime::AnyObject = msg_send![image_cls, alloc];
                     let img: *mut objc2::runtime::AnyObject = msg_send![img, initWithData: ns_data];
                     if img.is_null() {
-                        return;
+                        return None;
                     }
                     let _: () = msg_send![&*view, setImage: img];
+                    Some(())
                 }
-            });
+            })
+            .ok()
+            .flatten()
+            .is_some();
+            report_load(handle, loaded);
         }
 
         unsafe {

@@ -631,6 +631,12 @@ pub(crate) const PERRY_UI_TABLE_PART_A: &[MethodRow] = &[
         ret: ReturnKind::Widget,
     },
     MethodRow {
+        method: "imageSetOnLoad",
+        runtime: "perry_ui_image_set_on_load",
+        args: &[ArgKind::Widget, ArgKind::Closure],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "imageSetSize",
         runtime: "perry_ui_image_set_size",
         args: &[ArgKind::Widget, ArgKind::F64, ArgKind::F64],
