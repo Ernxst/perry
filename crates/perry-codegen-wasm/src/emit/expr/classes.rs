@@ -51,7 +51,7 @@ impl<'a> FuncEmitCtx<'a> {
                     self.emit_store_const(func, 1, captures.len() as f64);
                     let receives_this = this == ClosureThis::Receiver;
                     self.emit_store_const(func, 2, f64::from(u8::from(receives_this)));
-                    self.emit_store_const(func, 3, self.emitter.fn_proto_code(func_idx));
+                    self.emit_store_fn_info(func, 3, func_idx);
                     self.emit_memcall(func, "closure_new", 4);
                     // Set captures, then the captured `this` (see compile_closure).
                     let local_map = self.local_map;
@@ -139,6 +139,9 @@ impl<'a> FuncEmitCtx<'a> {
                 } else {
                     func.instruction(&Instruction::I64Const(TAG_UNDEFINED as i64));
                 }
+            }
+            Expr::ExternFuncRef { name, .. } if self.emitter.namespace_import(name).is_some() => {
+                self.emit_namespace_value(func, name);
             }
             Expr::ExternFuncRef { name, .. } => {
                 // Issue #1071: an `ExternFuncRef` used as a value can resolve
@@ -260,8 +263,13 @@ impl<'a> FuncEmitCtx<'a> {
                         self.emit_memcall(func, "map_new", 0);
                         return true;
                     }
-                    // The host's WeakMap, constructed as a bare `new Map` is (see new_dynamic).
-                    "WeakMap" if !self.emitter.user_classes.contains(class_name.as_str()) => {
+                    // The host's WeakMap, constructed as a bare `new Map` is (see new_dynamic),
+                    // its ArrayBuffer and DataView, and a typed array over a buffer
+                    // (`new Int32Array(buffer, offset, length)`).
+                    name if (matches!(name, "WeakMap" | "ArrayBuffer" | "DataView")
+                        || perry_hir::ir::typed_array_kind_for_name(name).is_some())
+                        && !self.emitter.user_classes.contains(name) =>
+                    {
                         let callee = Expr::PropertyGet {
                             byte_offset: 0,
                             byte_end: 0,

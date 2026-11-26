@@ -701,9 +701,9 @@ function buildImports() {
       // class_set_method(class_id_str, method_name_str, func_table_idx, proto_kind)
       class_set_method: (classId, methodName, funcIdx, protoKind) => {
         const cls = getString(classId);
+        const name = getString(methodName);
         if (!classMethodTable[cls]) classMethodTable[cls] = {};
-        classMethodTable[cls][getString(methodName)] = funcIdx | 0;
-        if (protoKind) __methodProtoKinds.set(funcIdx | 0, protoKind | 0);
+        classMethodTable[cls][name] = new __FnInfo(name, 0, protoKind, funcIdx);
       },
       // class_call_method(handle, method_name_id, args_array_handle) -> result
       // method_name_id is a plain f64 string table index (not NaN-boxed).
@@ -717,7 +717,7 @@ function buildImports() {
           while (cls) {
             const methods = classMethodTable[cls];
             if (methods && mname in methods) {
-              const fn = wasmInstance?.exports.__indirect_function_table?.get(methods[mname]);
+              const fn = wasmInstance?.exports.__indirect_function_table?.get(methods[mname].funcIdx);
               if (fn) {
                 const args = getHandle(argsHandle) || [];
                 // Pad for omitted TS optional params (Issue #1035).
@@ -1531,14 +1531,33 @@ const __NON_I64_RETURN_IMPORTS = new Set([
 // "Cannot convert a BigInt value to a number" on the very first call
 // (instances 2/3 reproduce as soon as `_start` invokes `class_set_method`
 // via `mem_call`).
+// An import argument's i64 bits as the f64 the runtime reads them as.
+function __i64ArgToF64(a) {
+  if (typeof a !== 'bigint') return a;
+  _u64[0] = a; return _f64[0];
+}
 function wrapForI64(fn, coerceNumberToBigInt = true) {
   if (fn.__rawBigint === true) return fn;
+  // The converted arguments go to `fn` as call arguments, never through an array
+  // of numbers: V8 may store such an array as doubles and silence a NaN's payload
+  // there, which turned a NaN-boxed string argument into NaN once the page was hot.
+  // The arrays for longer calls hold `undefined` first, so they never become doubles.
+  // WebAssembly calls an import without a receiver, so `fn` needs none.
   return function(...args) {
-    const convertedArgs = args.map(a => {
-      if (typeof a === 'bigint') { _u64[0] = a; return _f64[0]; }
-      return a;
-    });
-    const result = __reflectApply(fn, this, convertedArgs);
+    const c = __i64ArgToF64;
+    let result;
+    switch (args.length) {
+      case 0: result = fn(); break;
+      case 1: result = fn(c(args[0])); break;
+      case 2: result = fn(c(args[0]), c(args[1])); break;
+      case 3: result = fn(c(args[0]), c(args[1]), c(args[2])); break;
+      case 4: result = fn(c(args[0]), c(args[1]), c(args[2]), c(args[3])); break;
+      default: {
+        const convertedArgs = new Array(args.length).fill(undefined);
+        for (let i = 0; i < args.length; i++) convertedArgs[i] = c(args[i]);
+        result = __reflectApply(fn, undefined, convertedArgs);
+      }
+    }
     if (typeof result === 'bigint') return result;
     if (typeof result === 'number') {
       // #1049 instance 1: this wrapper exists because most callees here are
@@ -1648,16 +1667,42 @@ class __PerryClosure {
   static is(v) {
     return typeof v === 'object' && v !== null && #brand in v;
   }
-  // Its index in `__fnKindProtos`: private, so no program property can change it.
-  #protoKind;
+  // Its function's `__FnInfo`: private, so no program property can change it.
+  #info;
   // Non-enumerable, so `for...in` and `Object.keys` see only a closure's own properties.
-  constructor(funcIdx, captureCount, protoKind) {
+  constructor(funcIdx, captureCount, info) {
     __defineHidden(this, 'funcIdx', funcIdx);
     __defineHidden(this, 'captures', new Array(captureCount | 0));
-    this.#protoKind = protoKind | 0;
+    this.#info = info;
   }
   static protoKindOf(closure) {
-    return #protoKind in closure ? closure.#protoKind : 0;
+    return #info in closure ? closure.#info?.protoKind ?? 0 : 0;
+  }
+  // A closure without a record (none was emitted for its function) keeps `new`.
+  static isConstructor(closure) {
+    return #info in closure ? closure.#info?.constructible ?? true : false;
+  }
+  // A closure reads its function's name and length from the record it points at.
+  get name() {
+    return #info in this ? this.#info?.name : undefined;
+  }
+  get length() {
+    return #info in this ? this.#info?.length : undefined;
+  }
+}
+// A compiled function's own facts. `fn_info` makes a declaration's or closure's once when
+// the program starts, and every closure of the function points at it. A class member's is
+// made by its registration and held by its class's method table or template, with the
+// member's table index.
+class __FnInfo {
+  constructor(name, length, protoKind, funcIdx, constructible = false) {
+    this.name = name;
+    this.length = length;
+    this.protoKind = protoKind | 0;
+    this.funcIdx = funcIdx | 0;
+    // `new` may make an instance: not an arrow, a method, or an async or generator function.
+    this.constructible = constructible;
+    Object.freeze(this);
   }
 }
 // A function expression whose body reads its own `this`: its body takes the
@@ -1666,6 +1711,8 @@ class __PerryReceiverClosure extends __PerryClosure {}
 let __closureReceiver;
 // One value per function declaration, keyed by its table index (`function_value`).
 const __functionValues = new Map();
+// One namespace object per source module, keyed by its module index (`module_namespace`).
+const __moduleNamespaces = new Map();
 function __isPerryClosure(v) {
   return __PerryClosure.is(v);
 }
@@ -1682,6 +1729,7 @@ function __callClosureMethod(closure, receiver, args) {
 function __typeOf(v) {
   return __isPerryClosure(v) ? 'function' : typeof v;
 }
+
 // The prototype a function of each kind has: plain, async, generator, async generator.
 const __fnKindProtos = [
   Function.prototype,
@@ -1689,8 +1737,6 @@ const __fnKindProtos = [
   Object.getPrototypeOf(function* () {}),
   Object.getPrototypeOf(async function* () {}),
 ];
-// A compiled method's `__fnKindProtos` index by table index, when not plain.
-const __methodProtoKinds = new Map();
 // A host function standing for a function of `kind` has that kind's prototype.
 function __withKindProto(fn, kind) {
   if (kind) Object.setPrototypeOf(fn, __fnKindProtos[kind]);
@@ -1703,7 +1749,8 @@ function __programPrototype(obj, proto) {
     : proto;
 }
 
-// Class method/static/parent tables
+// Class method/static/parent tables. A class's instance methods: name -> the method's
+// `__FnInfo` (`class_set_method`, `class_define_computed`).
 const classMethodTable = {};
 // A class's named and computed instance accessors, and its named static ones: key ->
 // { get, set } function table indices, -1 for none (`class_set_accessor`).
@@ -1712,7 +1759,7 @@ const classStaticAccessorTable = Object.create(null);
 // The resolved keys of a class's computed fields (`__perry_computed_field_key_*`, see
 // `lower_class_prop`); its static fields are properties of its class value.
 const classStaticTable = {};
-// A class's named static methods: name -> function table index (`class_set_static_method`).
+// A class's named static methods: name -> the method's `__FnInfo` (`class_set_static_method`).
 // Null-prototype, so a method named `__proto__` is an own entry.
 const classStaticMethodTable = Object.create(null);
 const classParentTable = {};
@@ -1912,6 +1959,7 @@ function __classCtor(className, ctorIdx, caps, base, init = 0) {
     return result !== null && (typeof result === 'object' || typeof result === 'function') ? result : self;
   };
   Object.defineProperty(ctor, 'name', { value: className });
+  Object.defineProperty(ctor, 'length', { value: ctorIdx < 0 ? 0 : __classTemplate(className).ctor?.length ?? 0 });
   // Host `instanceof` walks the class table as class_instanceof does; an instance of
   // an evaluated template answers for its evaluation, as class_instanceof_value does.
   Object.defineProperty(ctor, Symbol.hasInstance, {
@@ -1949,8 +1997,8 @@ function __classCtor(className, ctorIdx, caps, base, init = 0) {
   }
   // Own named static members only: an inherited one is found along [[Prototype]]
   // (`__linkClassParent`), where a nearer static field shadows it.
-  for (const [m, idx] of Object.entries(classStaticMethodTable[className] || {})) {
-    __defineHidden(ctor, m, evaluated ? __classStaticMethodFn(className, m, idx, ctor) : __classStaticMethodValue(className, m));
+  for (const [m, info] of Object.entries(classStaticMethodTable[className] || {})) {
+    __defineHidden(ctor, m, evaluated ? __classStaticMethodFn(className, m, info, ctor) : __classStaticMethodValue(className, m));
   }
   for (const [key, { get, set }] of Object.entries(classStaticAccessorTable[className] || {})) {
     __defineAccessor(ctor, key, get, set, evaluated ? ctor : undefined);
@@ -1986,11 +2034,13 @@ function __isInternalKey(obj, key) {
   return __isComputedKeySlot(key) && __perryClassCtors.has(obj)
     && !__reflectApply(Object.prototype.propertyIsEnumerable, obj, [key]);
 }
+// A class's template, by name: its first evaluation, capture slots, prototype, fields,
+// and its constructor's `__FnInfo` (`class_set_ctor`).
 const __classTemplates = new Map();
 let __classEnvCall = null;
 function __classTemplate(className) {
   let t = __classTemplates.get(className);
-  if (!t) __classTemplates.set(className, (t = { first: undefined, slots: [], proto: undefined, fields: new Set() }));
+  if (!t) __classTemplates.set(className, (t = { first: undefined, slots: [], proto: undefined, fields: new Set(), ctor: undefined }));
   return t;
 }
 function __classEvaluate(className, ctorIdx, caps, base, init) {
@@ -2034,9 +2084,9 @@ function __defineHidden(target, key, value) {
 // the receiver it is called with is armed for that one method, which takes it on
 // entry (`class_static_method_this`), so a direct `C.m()` it makes sees `C`.
 // `evaluation`, a class expression's evaluation, supplies its captures.
-function __classStaticMethodFn(template, name, funcIdx, evaluation) {
+function __classStaticMethodFn(template, name, info, evaluation) {
   const fn = function (...args) {
-    const impl = wasmInstance.exports.__indirect_function_table.get(funcIdx);
+    const impl = wasmInstance.exports.__indirect_function_table.get(info.funcIdx);
     const bits = args.map(__jsValueToBits);
     const outerThis = __classStaticThis;
     const outerCall = __classEnvCall;
@@ -2050,14 +2100,15 @@ function __classStaticMethodFn(template, name, funcIdx, evaluation) {
     }
   };
   Object.defineProperty(fn, 'name', { value: name });
+  Object.defineProperty(fn, 'length', { value: info.length });
   __classMethodFns.add(fn);
-  return __withKindProto(fn, __methodProtoKinds.get(funcIdx));
+  return __withKindProto(fn, info.protoKind);
 }
 // The i64 entry an array bridge calls for `cb`: a Perry closure's compiled function
-// after its captures, or a class method value with no table entry of its own through
-// its host wrapper, which supplies its `this` and class evaluation.
+// after its captures, or a host function (a class method value, a bound function) called
+// with the values, which supplies its own `this` and class evaluation.
 function __arrayCallback(cb) {
-  if (typeof cb === 'function' && cb.funcIdx === undefined && __classMethodFns.has(cb)) {
+  if (typeof cb === 'function' && cb.funcIdx === undefined) {
     return (...bits) => __jsValueToBits(cb(...bits.map(__bitsToJsValue)));
   }
   if (!cb || typeof cb.funcIdx === 'undefined' || !wasmInstance) return undefined;
@@ -2114,15 +2165,16 @@ function __classAccessorPair(table, className, key, computed) {
 // A computed member (`RegisterClassComputedMethod` / `...Accessor`). An instance
 // member goes in the template's method table, so every evaluation's instances
 // dispatch it; a static one is a property of the class value.
-function __classDefineComputed(className, ctorIdx, key, kind, isStatic, a, b, protoKind) {
+function __classDefineComputed(className, ctorIdx, key, kind, isStatic, a, b, info) {
   const evaluation = __classDefiningOf(className);
-  if (protoKind) __methodProtoKinds.set(a, protoKind);
   if (isStatic) {
     const target = evaluation || __classRef(className, ctorIdx);
     if (kind === 0) {
       const fn = function (...args) { return __classMemberCall(a, evaluation, this, args); };
+      Object.defineProperty(fn, 'name', { value: __methodKeyName(key) });
+      Object.defineProperty(fn, 'length', { value: info.length });
       __classMethodFns.add(fn);
-      __defineHidden(target, key, __withKindProto(fn, protoKind));
+      __defineHidden(target, key, __withKindProto(fn, info.protoKind));
       return;
     }
     __defineAccessor(target, key, a, b, evaluation);
@@ -2130,7 +2182,7 @@ function __classDefineComputed(className, ctorIdx, key, kind, isStatic, a, b, pr
   }
   const methods = (classMethodTable[className] ||= {});
   if (kind === 0) {
-    methods[key] = a;
+    methods[key] = info;
     if (evaluation) __defineHidden(evaluation.prototype, key, __classMethodValue(className, key, evaluation));
     // A prototype made before this member was defined gets it too.
     const proto = __classTemplate(className).proto;
@@ -2245,6 +2297,10 @@ const __missingWellKnownSymbols = Object.create(null);
 
 // The bridge tables have no prototype: mem_call indexes them by a call site's method name,
 // and `o.isPrototypeOf(x)` must fall through to __classDispatch, not find Object.prototype's.
+// The receivers the array bridges walk (`indexOf`, `map`, `join`, ...): an array or a
+// typed array, whose own method then runs with the typed array's semantics.
+const __arrayOrTyped = (v) => Array.isArray(v) || (ArrayBuffer.isView(v) && !(v instanceof DataView));
+
 const __memDispatch = {
   __proto__: null,
   // `()` asks only whether array iteration is patched; `(value[, packed])` whether
@@ -2331,7 +2387,10 @@ const __memDispatch = {
   string_eq: (a, b) => a === b ? 1 : 0,
   string_len: (val) => {
     if (typeof val === 'string') return val.length;
+    // A typed array's own `length` (a DataView has none, so it reads undefined).
+    if (ArrayBuffer.isView(val)) return val.length;
     if (Array.isArray(val)) return val.length;
+    if (typeof val === 'function' || __isPerryClosure(val)) return val.length;
     return 0;
   },
   jsvalue_to_string: (val) => String(val),
@@ -2392,6 +2451,28 @@ const __memDispatch = {
   is_null_or_undefined: (val) => (val === null || val === undefined) ? 1 : 0,
   // SameValue: NaN is itself and 0 is not -0, unlike `===`.
   object_is: (a, b) => Object.is(a, b),
+  // `import * as ns` used as a value: the source module's exports sorted on a null
+  // prototype, tagged `Module`, not extensible. `values` pairs each export with its
+  // value and `globals` each promoted-let export with its wasm global, read on every
+  // access so the binding stays live.
+  module_namespace: (id, values, globals) => {
+    let ns = __moduleNamespaces.get(id);
+    if (ns) return ns;
+    ns = Object.create(null);
+    const members = [...values, ...globals.map(([key, g]) => [key, undefined, g])];
+    for (const [key, value, g] of members.sort(([a], [b]) => (a < b ? -1 : 1))) {
+      if (g !== undefined) {
+        const cell = wasmInstance.exports[`__wasm_global_${g}`];
+        Object.defineProperty(ns, key, { get: () => toJsValue(u64ToF64(cell.value)), enumerable: true });
+      } else {
+        // Not writable, as an importer cannot assign an export.
+        Object.defineProperty(ns, key, { value, enumerable: true });
+      }
+    }
+    Object.defineProperty(ns, Symbol.toStringTag, { value: 'Module' });
+    __moduleNamespaces.set(id, Object.preventExtensions(ns));
+    return ns;
+  },
 
   // Objects — args are plain JS values (obj is the object itself, key is a string, etc.)
   object_new: () => ({}),
@@ -2478,6 +2559,30 @@ const __memDispatch = {
     return false;
   },
   reflect_own_keys: (obj) => Reflect.ownKeys(obj).filter(k => !__isInternalKey(obj, k)),
+  // An omitted receiver arrives as `undefined` and means the target.
+  reflect_get: (obj, key, receiver) => {
+    if (!__holdsProperties(obj)) return Reflect.get(obj, key);
+    const k = __memDispatch.to_property_key(key);
+    let holder = obj;
+    if (k === 'funcIdx' || k === 'captures') {
+      while (holder !== null && !__memDispatch.object_has_own(holder, k)) holder = Reflect.getPrototypeOf(holder);
+      if (holder === null) return undefined;
+    }
+    return Reflect.get(holder, k, receiver === undefined ? obj : receiver);
+  },
+  reflect_set: (obj, key, value, receiver) => {
+    if (!__holdsProperties(obj)) return Reflect.set(obj, key, value);
+    const k = __memDispatch.to_property_key(key);
+    return Reflect.set(obj, k, value, receiver === undefined ? obj : receiver);
+  },
+  reflect_delete_property: (obj, key) => {
+    if (!__holdsProperties(obj)) return Reflect.deleteProperty(obj, key);
+    const k = __memDispatch.to_property_key(key);
+    return __isInternalKey(obj, k) || Reflect.deleteProperty(obj, k);
+  },
+  reflect_is_extensible: (obj) => Reflect.isExtensible(obj),
+  reflect_prevent_extensions: (obj) => Reflect.preventExtensions(obj),
+  reflect_set_prototype_of: (obj, proto) => Reflect.setPrototypeOf(obj, proto),
   reflect_get_own_property_descriptor: (obj, key) => __holdsProperties(obj)
     ? __memDispatch.object_get_own_property_descriptor(obj, key)
     : Reflect.getOwnPropertyDescriptor(obj, key),
@@ -2585,12 +2690,7 @@ const __memDispatch = {
   },
   array_set: (arr, index, value) => { if (Array.isArray(arr)) arr[typeof index === 'number' ? index : index] = value; },
   array_length: (arr) => Array.isArray(arr) ? arr.length : 0,
-  array_slice: (arr, start, end) => {
-    if (!Array.isArray(arr)) return [];
-    const s = typeof start === 'number' ? start : 0;
-    const e = end === undefined ? undefined : (typeof end === 'number' ? end : end);
-    return arr.slice(s, e);
-  },
+  array_slice: (arr, start, end) => (__arrayOrTyped(arr) ? arr.slice(start, end) : []),
   array_splice: (arr, start, deleteCount, ...items) => {
     if (!Array.isArray(arr)) return [];
     const s = typeof start === 'number' ? start : 0;
@@ -2604,16 +2704,16 @@ const __memDispatch = {
   // The host join owns element conversion (nested arrays, nullish elements) and the
   // separator's: an undefined one is ",", not "undefined".
   array_join: (arr, separator) => {
-    if (!Array.isArray(arr)) return '';
+    if (!__arrayOrTyped(arr)) return '';
     return arr.join(separator);
   },
-  array_index_of: (arr, value, fromIndex) => { if (!Array.isArray(arr)) return -1; return arr.indexOf(value, fromIndex); },
-  array_includes: (arr, value, fromIndex) => { if (!Array.isArray(arr)) return 0; return arr.includes(value, fromIndex) ? 1 : 0; },
+  array_index_of: (arr, value, fromIndex) => { if (!__arrayOrTyped(arr)) return -1; return arr.indexOf(value, fromIndex); },
+  array_includes: (arr, value, fromIndex) => { if (!__arrayOrTyped(arr)) return 0; return arr.includes(value, fromIndex) ? 1 : 0; },
   // fromIndex goes through only when the call passes one: an explicit `undefined`
   // searches from index 0, not from the end.
-  array_last_index_of: (arr, value, ...fromIndex) => Array.isArray(arr) ? arr.lastIndexOf(value, ...fromIndex) : -1,
+  array_last_index_of: (arr, value, ...fromIndex) => __arrayOrTyped(arr) ? arr.lastIndexOf(value, ...fromIndex) : -1,
   array_concat: (a1, a2) => (Array.isArray(a1) ? a1 : []).concat(Array.isArray(a2) ? a2 : []),
-  array_reverse: (arr) => { if (Array.isArray(arr)) arr.reverse(); return arr; },
+  array_reverse: (arr) => { if (__arrayOrTyped(arr)) arr.reverse(); return arr; },
   array_flat: (arr) => Array.isArray(arr) ? arr.flat() : [],
   array_is_array: (val) => Array.isArray(val) ? 1 : 0,
   array_from: (val) => Array.from(val),
@@ -2681,18 +2781,28 @@ const __memDispatch = {
   // Captures are stored as BigInt (i64 NaN-boxed bits).
   // __jsValueToBits converts JS values to BigInt for WASM calls.
   // __bitsToJsValue converts BigInt return values back to JS.
-  closure_new: (funcIdx, captureCount, receivesThis, protoKind) =>
+  // A function's `__FnInfo`, made once per function before any of its closures.
+  fn_info: (name, length, protoKind, constructible) =>
+    new __FnInfo(name, length, protoKind, 0, constructible === true || constructible === 1),
+  closure_new: (funcIdx, captureCount, receivesThis, info) =>
     receivesThis
-      ? new __PerryReceiverClosure(funcIdx, captureCount, protoKind)
-      : new __PerryClosure(funcIdx, captureCount, protoKind),
+      ? new __PerryReceiverClosure(funcIdx, captureCount, info)
+      : new __PerryClosure(funcIdx, captureCount, info),
+  // A class constructor's `__FnInfo`, registered with the class's methods and the same
+  // arguments, kept on the class's template (see __classCtor).
+  class_set_ctor: (classId, _name, funcIdx, _protoKind, length) => {
+    const cls = String(classId);
+    __classTemplate(cls).ctor = new __FnInfo(cls, length, 0, funcIdx);
+  },
   // A function declaration used as a value: one closure per function, so it keeps its
   // identity and properties across reads, with the `prototype` object an ordinary
   // function has (`prototype.constructor` is the function).
-  function_value: (funcIdx, protoKind, name) => {
+  function_value: (funcIdx, info) => {
     let fn = __functionValues.get(funcIdx);
     if (!fn) {
-      fn = new __PerryClosure(funcIdx, 0, protoKind);
-      Object.defineProperty(fn, 'name', { value: name, configurable: true });
+      fn = new __PerryClosure(funcIdx, 0, info);
+      Object.defineProperty(fn, 'length', { value: info?.length ?? 0, configurable: true });
+      Object.defineProperty(fn, 'name', { value: info?.name ?? '', configurable: true });
       const prototype = {};
       Object.defineProperty(prototype, 'constructor', { value: fn, writable: true, configurable: true });
       Object.defineProperty(fn, 'prototype', { value: prototype, writable: true });
@@ -2787,12 +2897,12 @@ const __memDispatch = {
 
   // Array higher-order methods — WASM callbacks use i64 (BigInt) params/returns.
   array_map: (arr, cb) => {
-    const call = Array.isArray(arr) ? __arrayCallback(cb) : undefined;
+    const call = __arrayOrTyped(arr) ? __arrayCallback(cb) : undefined;
     if (!call) return [];
     return arr.map((v, i) => __bitsToJsValue(call(__jsValueToBits(v), __jsValueToBits(i), __jsValueToBits(arr))));
   },
   array_filter: (arr, cb) => {
-    const call = Array.isArray(arr) ? __arrayCallback(cb) : undefined;
+    const call = __arrayOrTyped(arr) ? __arrayCallback(cb) : undefined;
     if (!call) return [];
     return arr.filter((v, i) => {
       const r = call(__jsValueToBits(v), __jsValueToBits(i), __jsValueToBits(arr));
@@ -2804,13 +2914,13 @@ const __memDispatch = {
   },
   // `forEach` is dispatched by name, so a Set or a Map receiver reaches it too.
   array_forEach: (arr, cb) => {
-    const isCollection = Array.isArray(arr) || arr instanceof Set || arr instanceof Map;
+    const isCollection = __arrayOrTyped(arr) || arr instanceof Set || arr instanceof Map;
     const call = isCollection ? __arrayCallback(cb) : undefined;
     if (!call) return;
     arr.forEach((v, i) => call(__jsValueToBits(v), __jsValueToBits(i), __jsValueToBits(arr)));
   },
   array_reduce: (arr, cb, initial) => {
-    const call = Array.isArray(arr) ? __arrayCallback(cb) : undefined;
+    const call = __arrayOrTyped(arr) ? __arrayCallback(cb) : undefined;
     if (!call) return undefined;
     let acc = initial === undefined ? __jsValueToBits(arr[0]) : __jsValueToBits(initial);
     const startIdx = initial === undefined ? 1 : 0;
@@ -2818,16 +2928,17 @@ const __memDispatch = {
     return __bitsToJsValue(acc);
   },
   array_find: (arr, cb) => {
-    const call = Array.isArray(arr) ? __arrayCallback(cb) : undefined;
+    const call = __arrayOrTyped(arr) ? __arrayCallback(cb) : undefined;
     if (!call) return undefined;
     for (let i = 0; i < arr.length; i++) {
-      const vBits = __jsValueToBits(arr[i]);
-      if (__bitsToJsValue(call(vBits, __jsValueToBits(i), __jsValueToBits(arr)))) return arr[i];
+      // The element the predicate saw, whatever the predicate writes.
+      const v = arr[i];
+      if (__bitsToJsValue(call(__jsValueToBits(v), __jsValueToBits(i), __jsValueToBits(arr)))) return v;
     }
     return undefined;
   },
   array_find_index: (arr, cb) => {
-    const call = Array.isArray(arr) ? __arrayCallback(cb) : undefined;
+    const call = __arrayOrTyped(arr) ? __arrayCallback(cb) : undefined;
     if (!call) return -1;
     for (let i = 0; i < arr.length; i++) { if (__bitsToJsValue(call(__jsValueToBits(arr[i]), __jsValueToBits(i), __jsValueToBits(arr)))) return i; }
     return -1;
@@ -2835,7 +2946,7 @@ const __memDispatch = {
   array_find_last: (arr, cb) => __reflectApply(Array.prototype.findLast, arr, [__hostPredicate(cb)]),
   array_find_last_index: (arr, cb) => __reflectApply(Array.prototype.findLastIndex, arr, [__hostPredicate(cb)]),
   array_sort: (arr, cb) => {
-    if (!Array.isArray(arr)) return arr;
+    if (!__arrayOrTyped(arr)) return arr;
     if (cb === undefined || cb === null) { arr.sort(); return arr; }
     const call = __arrayCallback(cb);
     if (!call) { arr.sort(); return arr; }
@@ -2860,8 +2971,8 @@ const __memDispatch = {
   array_to_spliced: (arr, start, deleteCount, ...items) => __reflectApply(Array.prototype.toSpliced, arr, [start, deleteCount, ...items]),
   array_with: (arr, index, value) => __reflectApply(Array.prototype.with, arr, [index, value]),
   array_copy_within: (arr, target, start, end) => __reflectApply(Array.prototype.copyWithin, arr, [target, start, end]),
-  array_some: (arr, cb) => Array.isArray(arr) && arr.some(__hostPredicate(cb)) ? 1 : 0,
-  array_every: (arr, cb) => Array.isArray(arr) && arr.every(__hostPredicate(cb)) ? 1 : 0,
+  array_some: (arr, cb) => __arrayOrTyped(arr) && arr.some(__hostPredicate(cb)) ? 1 : 0,
+  array_every: (arr, cb) => __arrayOrTyped(arr) && arr.every(__hostPredicate(cb)) ? 1 : 0,
 
   // Classes — args are plain JS values. obj is the object, className/methodName are strings.
   // class_new returns a plain object carrying its class name (see __classInstance).
@@ -2922,8 +3033,9 @@ const __memDispatch = {
     if ((funcIdx | 0) >= 0) __classStaticRun(String(className), __classDefiningTop(), funcIdx | 0);
   },
   class_eval_end: (className) => __classDefining.pop(),
-  class_define_computed: (className, ctorIdx, key, kind, isStatic, a, b, protoKind) =>
-    __classDefineComputed(String(className), ctorIdx | 0, key, kind | 0, !!isStatic, a | 0, b | 0, protoKind | 0),
+  class_define_computed: (className, ctorIdx, key, kind, isStatic, a, b, protoKind, length) =>
+    __classDefineComputed(String(className), ctorIdx | 0, key, kind | 0, !!isStatic, a | 0, b | 0,
+      (kind | 0) === 0 ? new __FnInfo(__methodKeyName(key), length | 0, protoKind, a | 0) : undefined),
   // `static [key] = value` of a class declared once.
   class_static_define: (className, ctorIdx, key, value) => {
     const cls = String(className);
@@ -3004,18 +3116,17 @@ const __memDispatch = {
     }
     return __memDispatch.class_instanceof(obj, classId) === 1;
   },
-  class_set_method: (classId, methodName, funcIdx, protoKind) => {
+  class_set_method: (classId, methodName, funcIdx, protoKind, length) => {
     const cls = String(classId);
+    const name = String(methodName);
     if (!classMethodTable[cls]) classMethodTable[cls] = {};
-    classMethodTable[cls][String(methodName)] = funcIdx | 0;
-    if (protoKind) __methodProtoKinds.set(funcIdx | 0, protoKind | 0);
+    classMethodTable[cls][name] = new __FnInfo(name, length, protoKind, funcIdx);
   },
   // A class value made before registration gets the method too.
-  class_set_static_method: (classId, methodName, funcIdx, protoKind) => {
+  class_set_static_method: (classId, methodName, funcIdx, protoKind, length) => {
     const cls = String(classId);
-    if (protoKind) __methodProtoKinds.set(funcIdx | 0, protoKind | 0);
     const name = String(methodName);
-    (classStaticMethodTable[cls] ||= Object.create(null))[name] = funcIdx | 0;
+    (classStaticMethodTable[cls] ||= Object.create(null))[name] = new __FnInfo(name, length, protoKind, funcIdx);
     __classStaticMethodValues.get(cls)?.delete(name);
     const ref = __classRefs.get(cls);
     if (ref) __defineHidden(ref, name, __classStaticMethodValue(cls, name));
@@ -3040,7 +3151,7 @@ const __memDispatch = {
       while (cls) {
         const methods = classMethodTable[cls];
         if (methods && mname in methods) {
-          const fn = wasmInstance?.exports.__indirect_function_table?.get(methods[mname]);
+          const fn = wasmInstance?.exports.__indirect_function_table?.get(methods[mname].funcIdx);
           if (fn) {
             const args = Array.isArray(argsArr) ? argsArr : [];
             // WASM functions use i64 (BigInt) params/returns.
@@ -3470,18 +3581,21 @@ const __memDispatch = {
     return result;
   },
   uint8array_new: (size) => new Uint8Array(size),
-  uint8array_from: (val) => Uint8Array.from(Array.isArray(val) ? val : []),
+  uint8array_from: (val) => Uint8Array.from(val),
   uint8array_length: (buf) => (buf instanceof Uint8Array) ? buf.length : 0,
   uint8array_get: (buf, idx) => (buf instanceof Uint8Array) ? buf[idx] : 0,
   uint8array_set: (buf, idx, val) => { if (buf instanceof Uint8Array) buf[idx] = val; },
 
   // Timers — closure arg is the closure object itself (decoded from POINTER_TAG)
   // Captures are already BigInt from closure_set_capture.
+  // A host function (a bound one) is the host's own callback.
   set_timeout: (closure, delay) => {
+    if (typeof closure === 'function') return setTimeout(closure, delay);
     if (!closure || typeof closure.funcIdx === 'undefined' || !wasmInstance) return 0;
     return setTimeout(() => { const fn = wasmInstance.exports.__indirect_function_table?.get(closure.funcIdx | 0); if (fn) fn(...__padBigintArgs(fn, 0, [...closure.captures])); }, delay);
   },
   set_interval: (closure, delay) => {
+    if (typeof closure === 'function') return setInterval(closure, delay);
     if (!closure || typeof closure.funcIdx === 'undefined' || !wasmInstance) return 0;
     return setInterval(() => { const fn = wasmInstance.exports.__indirect_function_table?.get(closure.funcIdx | 0); if (fn) fn(...__padBigintArgs(fn, 0, [...closure.captures])); }, delay);
   },
@@ -3929,6 +4043,8 @@ function __invokeConstructor(fn, caps, ...bigintArgs) {
 // Convert them once to i64: boxing strings through f64 can erase NaN payloads.
 function callWasmClosure(closureVal, ...extraArgs) {
   let closure;
+  // A host function (a bound one) takes and returns plain values.
+  if (typeof closureVal === 'function') return closureVal(...extraArgs);
   if (typeof closureVal === 'object' && closureVal !== null) {
     // Already a JS closure object (came through toJsValue)
     closure = closureVal;
@@ -4033,15 +4149,18 @@ function perry_ui_show_toast(message) {
   drain();
 }
 
-function perry_ui_app_create(titleOrOpts, width, height) {
-  let title = "Perry App", bodyH, w = 800, ht = 600;
+function perry_ui_app_create(titleOrOpts, _width, _height) {
+  let title = "Perry App", bodyH;
   if (typeof titleOrOpts === "object" && titleOrOpts !== null) {
-    title = titleOrOpts.title || title; w = titleOrOpts.width || w; ht = titleOrOpts.height || ht;
+    title = titleOrOpts.title || title;
     bodyH = titleOrOpts.body;
-  } else { title = titleOrOpts || title; w = width || w; ht = height || ht; }
+  } else { title = titleOrOpts || title; }
   document.title = title;
+  // The browser window is the app's window: `width` and `height` are a native
+  // window's initial size, and the user resizes that window, so the root fills
+  // the viewport instead of drawing a fixed-size box inside it.
   const root = uiGetRoot();
-  root.style.width = w + "px"; root.style.maxWidth = "100%"; root.style.height = ht + "px"; root.style.maxHeight = "100%";
+  root.style.width = "100%"; root.style.height = "100%";
   const h = uiAlloc(root);
   if (bodyH !== undefined) { const bodyEl = uiGet(bodyH); if (bodyEl) root.appendChild(bodyEl); }
   return h;
@@ -4050,17 +4169,21 @@ function perry_ui_vstack_create(spacing, children) {
   const el = document.createElement("div");
   el.style.display = "flex"; el.style.flexDirection = "column";
   if (spacing) el.style.gap = spacing + "px";
-  el.style.flex = "1 1 0%"; el.style.minHeight = "0"; el.style.overflow = "auto";
+  // A stack starts from its content's size, as a native one does; a sibling with a
+  // low hugging priority takes the free space (widgetSetHugging).
+  el.style.flex = "1 1 auto"; el.style.minHeight = "0"; el.style.overflow = "auto";
+  el._perryStack = true;
   const h = uiAlloc(el);
-  if (Array.isArray(children)) { for (var i = 0; i < children.length; i++) { var c = uiGet(children[i]); if (c) el.appendChild(c); } }
+  if (Array.isArray(children)) { for (var i = 0; i < children.length; i++) { var c = uiGet(children[i]); if (c) { el.appendChild(c); uiStackItem(el, c); } } }
   return h;
 }
 function perry_ui_hstack_create(spacing, children) {
   const el = document.createElement("div");
   el.style.display = "flex"; el.style.flexDirection = "row"; el.style.alignItems = "center";
   if (spacing) el.style.gap = spacing + "px";
+  el._perryStack = true;
   const h = uiAlloc(el);
-  if (Array.isArray(children)) { for (var i = 0; i < children.length; i++) { var c = uiGet(children[i]); if (c) el.appendChild(c); } }
+  if (Array.isArray(children)) { for (var i = 0; i < children.length; i++) { var c = uiGet(children[i]); if (c) { el.appendChild(c); uiStackItem(el, c); } } }
   return h;
 }
 function perry_ui_zstack_create() {
@@ -4324,7 +4447,25 @@ function perry_ui_textarea_get_string(h) { const el = uiGet(h); return el ? el.v
 // ---------- Child management ----------
 function perry_ui_widget_add_child(parentH, childH) {
   const p = uiGet(parentH), c = uiGet(childH);
-  if (p && c) p.appendChild(c);
+  if (p && c) { p.appendChild(c); uiStackItem(p, c); }
+}
+// Sizes `child` along `stack`'s main axis as the stack's distribution says
+// (stackSetDistribution): equal shares for FillEqually, shares by content for
+// FillProportionally. Under Fill, the default, a row gives its free width to a
+// child stack that has no hugging priority of its own, since a native stack view
+// hugs its content at low priority; widgetSetHugging decides for everything else.
+function uiStackItem(stack, child) {
+  if (!stack._perryStack) return;
+  const row = stack.style.flexDirection === "row";
+  const distribution = stack._perryDistribution;
+  if (distribution === 1 || distribution === 2) {
+    child.style.flex = distribution === 1 ? "1 1 0%" : "1 1 auto";
+  } else if (row && child._perryStack && child._perryHugging === undefined) {
+    // Weight 1 on top of its content: a sibling with a low hugging priority of its
+    // own (weight 250 - priority) takes nearly all the free width, as it would natively.
+    child.style.flex = "1 1 auto";
+  } else return;
+  if (row) child.style.minWidth = "0"; else child.style.minHeight = "0";
 }
 // The widgets added to `el`: a Section's legend or a Disclosure's summary is its title.
 function uiChildren(el) { return Array.from(el.children).filter(c => c !== el._perryTitle); }
@@ -4365,12 +4506,27 @@ function perry_ui_set_foreground(h, r, g, b, a) {
 function perry_ui_set_font_size(h, size) { const el = uiGet(h); if (el) el.style.fontSize = size + "px"; }
 function perry_ui_set_font_weight(h, weight) { const el = uiGet(h); if (el) el.style.fontWeight = weight; }
 // `textSetFontWeight(widget, size, weight)` sets the size and the weight together.
-// The weight is the native 0..1 scale (Apple's `systemFont(ofSize:weight:)`), mapped
-// onto CSS 100..900 and clamped, as the HarmonyOS backend maps it.
+// The weight is Apple's `systemFont(ofSize:weight:)` scale, which macOS uses as is:
+// regular 0, medium 0.23, semibold 0.3, bold 0.4, heavy 0.56, black 0.62, and the
+// light weights below 0. It is not linear, so CSS weights come from its named points.
+const __appleFontWeights = [[-0.8, 100], [-0.6, 200], [-0.4, 300], [0, 400], [0.23, 500], [0.3, 600], [0.4, 700], [0.56, 800], [0.62, 900]];
+function uiCssFontWeight(weight) {
+  const w = Number(weight) || 0;
+  const points = __appleFontWeights;
+  if (w <= points[0][0]) return points[0][1];
+  for (let i = 1; i < points.length; i++) {
+    const [x1, y1] = points[i];
+    if (w <= x1) {
+      const [x0, y0] = points[i - 1];
+      return __Math.round((y0 + (y1 - y0) * (w - x0) / (x1 - x0)) / 100) * 100;
+    }
+  }
+  return 900;
+}
 function perry_ui_text_set_font_weight(h, size, weight) {
   const el = uiGet(h); if (!el) return;
   el.style.fontSize = size + "px";
-  el.style.fontWeight = String(__Math.round(1 + 8 * __Math.min(__Math.max(weight, 0), 1)) * 100);
+  el.style.fontWeight = String(uiCssFontWeight(weight));
 }
 function perry_ui_set_font_family(h, family) { const el = uiGet(h); if (el) el.style.fontFamily = family; }
 function perry_ui_set_padding(h, top, left, bottom, right) {
@@ -4428,6 +4584,20 @@ function perry_ui_text_set_decoration(h, decoration) {
 // Issue #3621 — horizontal text alignment. Canonical Perry/AppKit values:
 // 0=left, 1=right, 2=center, 3=justified, 4=natural. Maps to CSS
 // `text-align` (natural → `start`, which follows the element's direction).
+// Lines beyond `lines` are cut with an ellipsis; 0 removes the limit.
+function perry_ui_text_set_number_of_lines(h, lines) {
+  const el = uiGet(h); if (!el) return;
+  const n = Number(lines);
+  if (n > 0) {
+    el.style.display = "-webkit-box";
+    el.style.webkitBoxOrient = "vertical";
+    el.style.webkitLineClamp = String(n);
+    el.style.overflow = "hidden";
+  } else {
+    el.style.webkitLineClamp = "";
+    el.style.overflow = "";
+  }
+}
 function perry_ui_text_set_text_alignment(h, alignment) {
   const el = uiGet(h);
   if (!el) return;
@@ -4453,16 +4623,19 @@ function perry_ui_textfield_set_borderless(h, borderless) {
 // Issue #185 Phase B closure 11 — Stack alignment via CSS flex.
 // Numeric enum: 0=fill, 1=center, 2=leading, 3=trailing, 4=baseline.
 // Maps to CSS `align-items` (cross-axis on flex containers).
+// `alignment` is an NSLayoutAttribute, as on macOS where it goes to NSStackView
+// unchanged (docs/src/ui/layout.md): it places children on the cross axis.
 function perry_ui_stack_set_alignment(h, alignment) {
   const el = uiGet(h);
   if (!el) return;
-  const value = alignment === 0 ? "stretch"
-    : alignment === 1 ? "center"
-    : alignment === 2 ? "flex-start"
-    : alignment === 3 ? "flex-end"
-    : alignment === 4 ? "baseline"
-    : "stretch";
-  el.style.alignItems = value;
+  const value = {
+    1: "flex-start", 3: "flex-start", 5: "flex-start",   // left, top, leading
+    2: "flex-end", 4: "flex-end", 6: "flex-end",         // right, bottom, trailing
+    7: "stretch", 8: "stretch",                          // width, height
+    9: "center", 10: "center",                           // centerX, centerY
+    11: "last baseline", 12: "first baseline",
+  }[Number(alignment)];
+  if (value) el.style.alignItems = value;
 }
 // Drop shadow (issue #185 Phase B closure 2). Same arg shape as the
 // Apple CALayer twin — `(r,g,b,a)` is shadow color, `blur` is shadow
@@ -4475,7 +4648,8 @@ function perry_ui_widget_set_shadow(h, r, g, b, a, blur, offsetX, offsetY) {
 }
 function perry_ui_set_opacity(h, opacity) { const el = uiGet(h); if (el) el.style.opacity = opacity; }
 function perry_ui_set_enabled(h, enabled) {
-  const el = uiGet(h); if (el) { el.disabled = !enabled; el.style.pointerEvents = enabled ? "" : "none"; el.style.opacity = enabled ? "" : "0.5"; }
+  // On a Toggle the checkbox is the control: disabling its wrapper leaves the keyboard working.
+  const el = uiGet(h); if (el) { (el._inp || el).disabled = !enabled; el.style.pointerEvents = enabled ? "" : "none"; el.style.opacity = enabled ? "" : "0.5"; }
 }
 function perry_ui_set_tooltip(h, text) { const el = uiGet(h); if (el) el.title = text || ""; }
 // On a Toggle the name goes on the checkbox: a screen reader ignores one on its wrapper.
@@ -4531,14 +4705,30 @@ function perry_ui_widget_set_width(h, w) {
     if (el) { el.style.width = w + "px"; el.style.minWidth = w + "px"; el.style.maxWidth = w + "px"; el.style.flexShrink = "0"; }
 }
 function perry_ui_widget_set_height(h, height) { const el = uiGet(h); if (el) el.style.height = height + "px"; }
-function perry_ui_widget_set_hugging(h) { const el = uiGet(h); if (el) el.style.flex = "0 0 auto"; }
+// Below 250 a widget stretches to take its stack's free space, as a low hugging
+// priority lets Auto Layout stretch it; from 250 up it keeps its natural size. The
+// lower the priority, the larger its share, so the lowest one takes nearly all of it.
+function perry_ui_widget_set_hugging(h, priority) {
+  const el = uiGet(h); if (!el) return;
+  el._perryHugging = Number(priority);
+  if (el._perryHugging < 250) { el.style.flex = `${250 - __Math.max(0, el._perryHugging)} 1 0%`; el.style.minWidth = "0"; }
+  else el.style.flex = "0 0 auto";
+}
 function perry_ui_widget_match_parent_width(h) { const el = uiGet(h); if (el) el.style.width = "100%"; }
 function perry_ui_widget_match_parent_height(h) { const el = uiGet(h); if (el) el.style.height = "100%"; }
 function perry_ui_widget_set_edge_insets(h, top, left, bottom, right) {
   perry_ui_set_padding(h, top, left, bottom, right);
 }
 function perry_ui_stack_set_detaches_hidden(h) { /* no-op in web */ }
-function perry_ui_stack_set_distribution(h) { /* no-op in web */ }
+// NSStackView distributions: 0 Fill, 1 FillEqually, 2 FillProportionally,
+// 3 EqualSpacing, 4 EqualCentering.
+function perry_ui_stack_set_distribution(h, distribution) {
+  const el = uiGet(h); if (!el) return;
+  el._perryDistribution = Number(distribution);
+  el.style.justifyContent = el._perryDistribution === 3 ? "space-between"
+    : el._perryDistribution === 4 ? "space-around" : "";
+  for (const child of uiChildren(el)) uiStackItem(el, child);
+}
 function perry_ui_widget_set_context_menu(widgetH, menuH) { /* simplified stub */ }
 
 // ---------- Animations ----------
@@ -4582,16 +4772,34 @@ function perry_ui_on_frame(callback) {
 }
 function perry_ui_cancel_frame(id) { cancelAnimationFrame(id); }
 
+// On a Toggle, a click on the wrapper also clicks its checkbox and both reach the wrapper.
 function perry_ui_set_on_click(h, callback) {
-  const el = uiGet(h); if (el) el.addEventListener("click", () => callWasmClosure(callback));
+  const el = uiGet(h); if (el) (el._inp || el).addEventListener("click", () => callWasmClosure(callback));
 }
 function perry_ui_set_on_hover(h, callback) {
   const el = uiGet(h); if (!el) return;
-  el.addEventListener("mouseenter", () => callWasmClosure(callback, 1.0));
-  el.addEventListener("mouseleave", () => callWasmClosure(callback, 0.0));
+  el.addEventListener("mouseenter", () => callWasmClosure(callback, true));
+  el.addEventListener("mouseleave", () => callWasmClosure(callback, false));
 }
 function perry_ui_set_on_double_click(h, callback) {
   const el = uiGet(h); if (el) el.addEventListener("dblclick", () => callWasmClosure(callback));
+}
+// widgetSetOnClick makes any widget a button: it takes the pointer cursor, keyboard
+// focus, and Enter or Space to activate it, as a native button would.
+function perry_ui_widget_set_on_click(h, callback) {
+  const el = uiGet(h); if (!el) return;
+  // A Toggle's checkbox is already a focusable control.
+  if (el._inp) return perry_ui_set_on_click(h, callback);
+  el.addEventListener("click", () => callWasmClosure(callback));
+  if (el.tagName === "BUTTON") return;
+  el.style.cursor = "pointer";
+  if (!el.hasAttribute("tabindex")) el.tabIndex = 0;
+  if (!el.hasAttribute("role")) el.setAttribute("role", "button");
+  el.addEventListener("keydown", (event) => {
+    if (event.target !== el || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    callWasmClosure(callback);
+  });
 }
 
 // ---------- State ----------
@@ -4863,9 +5071,62 @@ function perry_ui_wheel_picker_add_item(h, title) {
 }
 function perry_ui_wheel_picker_set_selected(h, index) { const el = uiGet(h); if (el) el.selectedIndex = index; }
 function perry_ui_wheel_picker_get_selected(h) { const el = uiGet(h); return el ? el.selectedIndex : -1; }
+// RadioGroup: one `<fieldset>` whose radios share a name, each inside its own `<label>`;
+// onChange receives the chosen index, as Picker's does. An index is a radio's place among
+// the labels the group holds now, so clearing the group leaves no stale radio.
+let radioGroupSeq = 0;
+const radioGroupRadios = (fs) => [...fs.children].map(label => label._radio).filter(Boolean);
+function perry_ui_radio_group_create(callback) {
+  const fs = document.createElement("fieldset");
+  fs.setAttribute("role", "radiogroup");
+  fs.style.display = "flex"; fs.style.flexDirection = "column"; fs.style.gap = "4px";
+  fs.style.border = "none"; fs.style.padding = "0"; fs.style.margin = "0"; fs.style.minWidth = "0";
+  fs._perryCallback = callback;
+  fs._radioName = "perry-radio-" + (++radioGroupSeq);
+  return uiAlloc(fs);
+}
+function perry_ui_radio_group_add_item(h, title) {
+  const fs = uiGet(h); if (!fs) return;
+  const label = document.createElement("label");
+  label.style.display = "flex"; label.style.alignItems = "center"; label.style.gap = "8px";
+  const input = document.createElement("input"); input.type = "radio"; input.name = fs._radioName;
+  input.addEventListener("change", () => {
+    if (input.checked && fs._perryCallback !== undefined) callWasmClosure(fs._perryCallback, radioGroupRadios(fs).indexOf(input));
+  });
+  label.appendChild(input);
+  label._radio = input;
+  const text = document.createElement("span"); text.textContent = title; label.appendChild(text);
+  fs.appendChild(label);
+}
+function perry_ui_radio_group_set_selected(h, index) {
+  const fs = uiGet(h); if (fs) radioGroupRadios(fs).forEach((r, i) => { r.checked = i === (index | 0); });
+}
+function perry_ui_radio_group_get_selected(h) {
+  const fs = uiGet(h); return fs ? radioGroupRadios(fs).findIndex(r => r.checked) : -1;
+}
 
 // ---------- Image ----------
-function perry_ui_image_create_symbol(name) { return perry_ui_text_create("⬜ " + name); }
+// A symbol is `symbols/<name>.svg` beside the page, drawn as a mask over the current
+// colour so imageSetTint colours it the way it colours a native symbol image. The
+// browser has no system symbol set; the app ships the SVGs it names, and a missing
+// file leaves the space empty.
+function perry_ui_image_create_symbol(name) {
+  const el = document.createElement("span");
+  const url = `url("symbols/${encodeURIComponent(String(name ?? ""))}.svg")`;
+  el.ariaHidden = "true";
+  el.style.display = "inline-block";
+  el.style.flexShrink = "0";
+  el.style.width = "1em";
+  el.style.height = "1em";
+  el.style.backgroundColor = "currentColor";
+  for (const prefix of ["webkitMask", "mask"]) {
+    el.style[prefix + "Image"] = url;
+    el.style[prefix + "Size"] = "contain";
+    el.style[prefix + "Repeat"] = "no-repeat";
+    el.style[prefix + "Position"] = "center";
+  }
+  return uiAlloc(el);
+}
 function perry_ui_image_create_url(url, alt) {
   const el = document.createElement("img");
   el.src = url || "";
@@ -5356,6 +5617,28 @@ function perry_system_haptic_play(type) {
   };
   try { navigator.vibrate(patterns[type] ?? 10); } catch (e) { /* no-op */ }
 }
+// The form factor from the input device and the viewport: a touch screen narrower
+// than a tablet is a "phone", a wider one a "pad", anything else "desktop".
+function perry_get_device_idiom() {
+  const touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  if (!touch) return "desktop";
+  const width = Math.min(window.innerWidth || 0, (window.screen && window.screen.width) || Infinity);
+  return width < 600 ? "phone" : "pad";
+}
+// The system share sheet where the browser has one (navigator.share), otherwise
+// the URL goes to the clipboard.
+function perry_system_share_url(url, title) {
+  const text = String(url ?? "");
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    navigator.share(title ? { url: text, title: String(title) } : { url: text }).catch(() => {});
+  } else if (typeof navigator !== "undefined" && navigator.clipboard) {
+    navigator.clipboard.writeText(text).catch(() => {});
+  }
+}
+// Remote push needs a Web Push subscription the page cannot create on its own, so
+// the callback is never called: the app sees no device token, as on a device
+// where the user declined notifications.
+function perry_system_notification_register_remote(_callback) {}
 function perry_system_keychain_save(key, value) { try { localStorage.setItem("__pk_" + key, value); } catch(e) {} }
 function perry_system_keychain_get(key) { return localStorage.getItem("__pk_" + key) || ""; }
 function perry_system_keychain_delete(key) { localStorage.removeItem("__pk_" + key); }
@@ -6258,6 +6541,7 @@ const __perryUiDispatch = {
   perry_ui_on_frame, perry_ui_cancel_frame,
   // Events
   perry_ui_set_on_click, perry_ui_set_on_hover, perry_ui_set_on_double_click,
+  perry_ui_widget_set_on_click,
   // State
   perry_ui_state_create, perry_ui_state_get, perry_ui_state_set,
   perry_ui_state_on_change, perry_ui_state_bind_text, perry_ui_state_bind_text_numeric,
@@ -6269,7 +6553,7 @@ const __perryUiDispatch = {
   // Text/Button/TextField ops
   perry_ui_text_set_string, perry_ui_text_set_selectable, perry_ui_text_set_wraps, perry_ui_text_set_color,
   perry_ui_text_set_letter_spacing, perry_ui_text_set_line_height,
-  perry_ui_text_set_text_alignment,
+  perry_ui_text_set_text_alignment, perry_ui_text_set_number_of_lines,
   perry_ui_button_set_bordered, perry_ui_button_set_title, perry_ui_button_set_text_color,
   perry_ui_button_set_image, perry_ui_button_set_content_tint_color, perry_ui_button_set_image_position,
   perry_ui_textfield_focus, perry_ui_textfield_set_string, perry_ui_textfield_get_string,
@@ -6292,6 +6576,8 @@ const __perryUiDispatch = {
   // Picker
   perry_ui_picker_add_item, perry_ui_picker_set_selected, perry_ui_picker_get_selected,
   perry_ui_wheel_picker_add_item, perry_ui_wheel_picker_set_selected, perry_ui_wheel_picker_get_selected,
+  perry_ui_radio_group_create, perry_ui_radio_group_add_item,
+  perry_ui_radio_group_set_selected, perry_ui_radio_group_get_selected,
   // Image
   perry_ui_image_create_symbol, perry_ui_image_create_url,
     perry_ui_load_image, perry_ui_image_set_size, perry_ui_image_set_tint,
@@ -6324,6 +6610,7 @@ const __perryUiDispatch = {
   // System
   perry_system_open_url, perry_system_is_dark_mode, perry_system_preferences_get,
   perry_system_preferences_set, perry_system_haptic_play,
+  perry_get_device_idiom, perry_system_share_url, perry_system_notification_register_remote,
   perry_system_keychain_save, perry_system_keychain_get,
   perry_system_keychain_delete, perry_system_notification_send,
   // Frame split
@@ -6536,20 +6823,89 @@ function __hostCallback(value) {
 // value per evaluation and runs in that evaluation's environment whatever its `this`.
 const __classMethodValues = new Map();
 const __classMethodFns = new WeakSet();
+// A closure is not a host function, so it inherits Function.prototype's methods but
+// cannot use its call / apply / bind / toString, which need a callable receiver: these
+// stand in for them, and `instanceof Function` holds for a closure as for a function.
+// ToLength: a negative or NaN length is 0, a huge one throws when the list is made.
+function __toLength(v) {
+  const n = Math.trunc(Number(v)) || 0;
+  return n <= 0 ? 0 : Math.min(n, Number.MAX_SAFE_INTEGER);
+}
+function __closureReceiverCheck(fn, method) {
+  if (!__isPerryClosure(fn)) {
+    throw new TypeError(`Function.prototype.${method} called on a value that is not a function`);
+  }
+}
+// `new` on a closure (from a bound function): an object on the closure's `prototype`,
+// unless the closure returns an object.
+function __constructClosure(closure, args) {
+  const proto = closure.prototype;
+  const self = Object.create(proto !== null && typeof proto === 'object' ? proto : Object.prototype);
+  const result = __callClosureMethod(closure, self, args);
+  return result !== null && (typeof result === 'object' || typeof result === 'function') ? result : self;
+}
+Object.setPrototypeOf(__PerryClosure.prototype, Function.prototype);
+for (const [key, value] of Object.entries({
+  call(thisArg, ...args) {
+    __closureReceiverCheck(this, 'call');
+    return __callClosureMethod(this, thisArg, args);
+  },
+  apply(thisArg, list) {
+    __closureReceiverCheck(this, 'apply');
+    if (list !== null && list !== undefined && typeof list !== 'object' && typeof list !== 'function') {
+      throw new TypeError('CreateListFromArrayLike called on non-object');
+    }
+    return __callClosureMethod(this, thisArg, list == null ? [] : Array.from({ length: __toLength(list.length) }, (_, i) => list[i]));
+  },
+  // There is no source text to give back: a native function's form, with the name.
+  toString() {
+    __closureReceiverCheck(this, 'toString');
+    return `function ${typeof this.name === 'string' ? this.name : ''}() { [native code] }`;
+  },
+  bind(thisArg, ...bound) {
+    __closureReceiverCheck(this, 'bind');
+    const target = this;
+    const fn = function (...args) {
+      if (!new.target) return __callClosureMethod(target, thisArg, [...bound, ...args]);
+      if (!__PerryClosure.isConstructor(target)) throw new TypeError(`${fn.name} is not a constructor`);
+      return __constructClosure(target, [...bound, ...args]);
+    };
+    const length = typeof target.length === 'number' ? Math.max(0, target.length - bound.length) : 0;
+    Object.defineProperty(fn, 'length', { value: length, configurable: true });
+    Object.defineProperty(fn, 'name', {
+      value: `bound ${typeof target.name === 'string' ? target.name : ''}`,
+      configurable: true,
+    });
+    __classMethodFns.add(fn);
+    return fn;
+  },
+})) {
+  // They take Perry values as a compiled method does (see __jsMethodInvoke).
+  __classMethodFns.add(value);
+  Object.defineProperty(__PerryClosure.prototype, key, { value, writable: true, configurable: true });
+}
 // Keyed by class, then by method name, which a computed member may make a Symbol.
+// SetFunctionName: a symbol key names a method by its bracketed description.
+function __methodKeyName(key) {
+  if (typeof key !== 'symbol') return String(key);
+  return key.description === undefined ? '' : `[${key.description}]`;
+}
 function __classMethodValue(cls, mname, evaluation) {
   const cache = evaluation ? __evaluationOf(evaluation) : null;
   const values = cache ? (cache.methods ||= new Map()) : __classMethodValues;
   let byName = values.get(cls);
   if (!byName) values.set(cls, (byName = new Map()));
-  const funcIdx = classMethodTable[cls][mname];
+  const info = classMethodTable[cls][mname];
+  const funcIdx = info.funcIdx;
   let fn = byName.get(mname);
   if (!fn || fn.funcIdx !== funcIdx) {
     fn = function (...args) { return __classMemberCall(funcIdx, evaluation, this, args); };
+    Object.defineProperty(fn, 'name', { value: __methodKeyName(mname) });
+    Object.defineProperty(fn, 'length', { value: info.length });
     __defineHidden(fn, 'funcIdx', funcIdx);
     __defineHidden(fn, 'captures', [TAG_UNDEFINED]);
     __classMethodFns.add(fn);
-    __withKindProto(fn, __methodProtoKinds.get(funcIdx));
+    __withKindProto(fn, info.protoKind);
     byName.set(mname, fn);
   }
   return fn;
@@ -6706,7 +7062,7 @@ function __classDispatch(objVal, mname, rawArgs) {
       // Own keys only (see __classHasMethod): `in` finds Object.prototype's `toString`
       // in a subclass's table and hands a host function to Table.get.
       if (methods && __hasOwn(methods, mname)) {
-        const fn = wasmInstance?.exports.__indirect_function_table?.get(methods[mname]);
+        const fn = wasmInstance?.exports.__indirect_function_table?.get(methods[mname].funcIdx);
         if (fn) {
           // Pad for omitted TS optional params (Issue #1035).
           const padded = __padBigintArgs(fn, 1, rawArgs.map(v => __jsValueToBits(v)));
