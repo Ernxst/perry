@@ -218,8 +218,8 @@ pub fn create(year: i64, month: i64, on_change: f64) -> i64 {
         // NSDatePickerStyleTextFieldAndStepper = 0 (compact field).
         let _: () = msg_send![&*picker, setDatePickerStyle: 0u64];
         // Limit to year/month/day — drop the clock face.
-        // NSDatePickerElementFlagYearMonthDay = 0xC0
-        let _: () = msg_send![&*picker, setDatePickerElements: 0xC0u64];
+        // NSDatePickerElementFlagYearMonthDay = 0xE0
+        let _: () = msg_send![&*picker, setDatePickerElements: 0xE0u64];
 
         // Initial date.
         let initial_year = if year > 0 { year } else { 2026 };
