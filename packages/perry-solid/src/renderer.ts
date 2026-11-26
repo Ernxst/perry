@@ -55,7 +55,18 @@ export interface NativeDriver {
    * that fire it only once asked. `emit` calls the handler, as `create`'s does.
    */
   listen?(handle: number, kind: ElementName, handler: string, emit: Emit): void;
+  /** The modifier keys held now, which a click reports. Without it, clicks report none. */
+  modifiers?(): Modifiers;
 }
+
+export interface Modifiers {
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}
+
+const NO_MODIFIERS: Modifiers = { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false };
 
 /** Retained ordering metadata; native handles themselves have no sibling API. */
 export interface NativeNode {
@@ -128,8 +139,8 @@ export function createNativeRenderer(driver: NativeDriver) {
     return { kind, tag, handle: 0, materialized: false, parent: null, nodes: [], props: {}, text };
   }
 
-  // A click is a plain left click, so code that skips modified or other-button clicks, as a
-  // router link does, sees one it handles.
+  // A click is a left click. A link's reports no modifier keys either, since a router link skips
+  // modified clicks for the browser to open in a new tab, and natively nothing would open it.
   function emitter(node: NativeNode): Emit {
     return (handler, state) => {
       const callback = node.props[handler];
@@ -138,10 +149,7 @@ export function createNativeRenderer(driver: NativeDriver) {
         currentTarget: target,
         target,
         button: 0,
-        altKey: false,
-        ctrlKey: false,
-        metaKey: false,
-        shiftKey: false,
+        ...(node.tag === "a" || !driver.modifiers ? NO_MODIFIERS : driver.modifiers()),
         defaultPrevented: false,
         preventDefault() { event.defaultPrevented = true; },
       };

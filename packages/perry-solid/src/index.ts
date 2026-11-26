@@ -12,7 +12,7 @@ import {
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
-  type State, type Widget,
+  currentModifiers, type State, type Widget,
 } from "perry/ui";
 import { openURL } from "perry/system";
 import { CanvasElement } from "perry-browser";
@@ -744,6 +744,10 @@ function setRuns(text: Widget, runs: TextRun[]): void {
 }
 
 const driver: NativeDriver = {
+  modifiers() {
+    const bits = currentModifiers();
+    return { metaKey: (bits & 1) !== 0, shiftKey: (bits & 2) !== 0, altKey: (bits & 4) !== 0, ctrlKey: (bits & 8) !== 0 };
+  },
   create(kind, tag, emit): number {
     switch (kind) {
       case "VStack": {
