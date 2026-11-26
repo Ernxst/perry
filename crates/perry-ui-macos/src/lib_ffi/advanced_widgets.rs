@@ -552,6 +552,19 @@ pub extern "C" fn perry_ui_widget_set_on_magnify(handle: i64, callback: f64) {
     crate::pointer::set_on_magnify(handle, callback);
 }
 
+/// Call back with `(x, y)` from the window's top left for every mouse press
+/// anywhere in the widget's window, even while the widget is hidden.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_set_on_window_mouse_down(handle: i64, callback: f64) {
+    crate::pointer::set_on_window_mouse_down(handle, callback);
+}
+
+/// Stop calling a widget's window press callback.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_clear_on_window_mouse_down(handle: i64) {
+    crate::pointer::clear_on_window_mouse_down(handle);
+}
+
 /// Animate the opacity of a widget. `duration_secs` is in seconds.
 #[no_mangle]
 pub extern "C" fn perry_ui_widget_animate_opacity(handle: i64, target: f64, duration_secs: f64) {

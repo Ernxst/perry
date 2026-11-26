@@ -30,6 +30,7 @@ use crate::widgets::get_widget;
 
 extern "C" {
     fn js_closure_call1(closure: *const u8, this: perry_ffi::JsThis, arg: f64) -> f64;
+    fn js_closure_call2(closure: *const u8, this: perry_ffi::JsThis, a: f64, b: f64) -> f64;
     fn js_closure_call3(closure: *const u8, this: perry_ffi::JsThis, a: f64, b: f64, c: f64) -> f64;
     fn js_closure_call4(
         closure: *const u8,
@@ -98,6 +99,7 @@ thread_local! {
     static HOVER_CB: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
     static WHEEL_CB: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
     static MAGNIFY_CB: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
+    static WINDOW_DOWN_CB: RefCell<HashMap<i64, f64>> = RefCell::new(HashMap::new());
     /// `true` if the cursor was inside the widget on the last move
     /// event we processed.
     static HOVER_STATE: RefCell<HashMap<i64, bool>> = RefCell::new(HashMap::new());
@@ -123,6 +125,7 @@ pub(crate) fn scan_macos_pointer_gc_roots(visitor: &mut perry_ffi::GcRootVisitor
         &HOVER_CB,
         &WHEEL_CB,
         &MAGNIFY_CB,
+        &WINDOW_DOWN_CB,
     ] {
         callbacks.with(|callbacks| {
             for callback in callbacks.borrow_mut().values_mut() {
@@ -240,6 +243,12 @@ unsafe fn handle_event(event: *mut AnyObject) {
         return;
     }
     let button = js_button_from_event(event, event_type);
+    if matches!(
+        event_type,
+        NS_EVENT_TYPE_LEFT_MOUSE_DOWN | NS_EVENT_TYPE_RIGHT_MOUSE_DOWN | NS_EVENT_TYPE_OTHER_MOUSE_DOWN
+    ) {
+        dispatch_window_down(window, win_loc);
+    }
 
     // Pick which registry to dispatch to. Drag events are routed to
     // onMouseMove (drawing apps want a continuous stream during drag),
@@ -454,6 +463,45 @@ unsafe fn dispatch_hover_transitions(event_window: *mut AnyObject, win_loc: CGPo
     }
 }
 
+/// Call every window press callback registered on a widget in `window`,
+/// hidden or not, with the press's position from the content view's top left,
+/// the frame `perry_ui_widget_get_frame` measures in.
+unsafe fn dispatch_window_down(window: *mut AnyObject, win_loc: CGPoint) {
+    let entries: Vec<(i64, f64)> =
+        WINDOW_DOWN_CB.with(|c| c.borrow().iter().map(|(k, v)| (*k, *v)).collect());
+    if entries.is_empty() {
+        return;
+    }
+    let content: *mut AnyObject = msg_send![window, contentView];
+    if content.is_null() {
+        return;
+    }
+    let content: &NSView = &*(content as *const NSView);
+    let point: CGPoint = msg_send![
+        content,
+        convertPoint: win_loc,
+        fromView: std::ptr::null::<AnyObject>()
+    ];
+    let y = if content.isFlipped() {
+        point.y
+    } else {
+        content.bounds().size.height - point.y
+    };
+    for (handle, closure_f64) in entries {
+        let Some(view) = get_widget(handle) else {
+            continue;
+        };
+        let view_window: *mut AnyObject = msg_send![&*view, window];
+        if view_window != window {
+            continue;
+        }
+        let closure_ptr = js_nanbox_get_pointer(closure_f64);
+        if closure_ptr != 0 {
+            js_closure_call2(closure_ptr as *const u8, perry_ffi::JsThis::UNDEFINED, point.x, y);
+        }
+    }
+}
+
 fn snapshot_down() -> Vec<(i64, f64)> {
     MOUSE_DOWN_CB.with(|c| c.borrow().iter().map(|(k, v)| (*k, *v)).collect())
 }
@@ -510,6 +558,19 @@ pub fn set_on_magnify(handle: i64, callback: f64) {
         c.borrow_mut().insert(handle, callback);
     });
     install_monitor_once();
+}
+
+pub fn set_on_window_mouse_down(handle: i64, callback: f64) {
+    WINDOW_DOWN_CB.with(|c| {
+        c.borrow_mut().insert(handle, callback);
+    });
+    install_monitor_once();
+}
+
+pub fn clear_on_window_mouse_down(handle: i64) {
+    WINDOW_DOWN_CB.with(|c| {
+        c.borrow_mut().remove(&handle);
+    });
 }
 
 /// Set the `(isHovering: boolean)`-style hover callback (issue #1868).

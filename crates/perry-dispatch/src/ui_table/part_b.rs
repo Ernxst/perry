@@ -250,6 +250,18 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::Void,
     },
     MethodRow {
+        method: "widgetSetOnWindowMouseDown",
+        runtime: "perry_ui_widget_set_on_window_mouse_down",
+        args: &[ArgKind::Widget, ArgKind::Closure],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
+        method: "widgetClearOnWindowMouseDown",
+        runtime: "perry_ui_widget_clear_on_window_mouse_down",
+        args: &[ArgKind::Widget],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "widgetAnimateOpacity",
         runtime: "perry_ui_widget_animate_opacity",
         args: &[ArgKind::Widget, ArgKind::F64, ArgKind::F64],

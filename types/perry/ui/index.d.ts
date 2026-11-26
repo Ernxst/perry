@@ -1298,6 +1298,20 @@ export function widgetSetOnMagnify(
     widget: Widget,
     callback: (magnification: number, x: number, y: number) => void,
 ): void;
+
+/**
+ * Fire for every mouse press anywhere in the widget's window, even while
+ * the widget is hidden, before the press reaches the widget under it, with the press's
+ * position from the window's top left, as `widgetGetFrame` measures.
+ * macOS only.
+ */
+export function widgetSetOnWindowMouseDown(
+    widget: Widget,
+    callback: (x: number, y: number) => void,
+): void;
+
+/** Stop calling the widget's `widgetSetOnWindowMouseDown` callback. macOS only. */
+export function widgetClearOnWindowMouseDown(widget: Widget): void;
 /** Animate opacity to `target` over `durationSecs` seconds. */
 export function widgetAnimateOpacity(widget: Widget, target: number, durationSecs: number): void;
 /** Animate position by `(dx, dy)` pixels over `durationSecs` seconds. */
