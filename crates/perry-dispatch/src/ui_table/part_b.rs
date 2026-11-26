@@ -550,6 +550,12 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         ret: ReturnKind::Void,
     },
     MethodRow {
+        method: "menuSetItemEnabled",
+        runtime: "perry_ui_menu_set_item_enabled",
+        args: &[ArgKind::Widget, ArgKind::F64, ArgKind::F64],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "menuAddItemWithShortcut",
         runtime: "perry_ui_menu_add_item_with_shortcut",
         args: &[

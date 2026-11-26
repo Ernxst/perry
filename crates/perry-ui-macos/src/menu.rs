@@ -209,6 +209,19 @@ pub fn clear(menu_handle: i64) {
     }
 }
 
+/// Enable or disable the item at `index`, counting separators and submenus. The menu stops
+/// enabling items by itself, which AppKit otherwise does for every item with a target.
+pub fn set_item_enabled(menu_handle: i64, index: f64, enabled: f64) {
+    if let Some(menu) = get_menu(menu_handle) {
+        menu.setAutoenablesItems(false);
+        if index >= 0.0 && (index as isize) < menu.numberOfItems() {
+            if let Some(item) = menu.itemAtIndex(index as isize) {
+                item.setEnabled(enabled != 0.0);
+            }
+        }
+    }
+}
+
 /// Add a separator item to a menu.
 pub fn add_separator(menu_handle: i64) {
     if let Some(menu) = get_menu(menu_handle) {

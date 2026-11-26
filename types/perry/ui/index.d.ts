@@ -1502,6 +1502,11 @@ export function menuAddItem(menu: Widget, title: string, callback: () => void): 
 export function menuAddSeparator(menu: Widget): void;
 export function menuAddSubmenu(menu: Widget, title: string, submenu: Widget): void;
 export function menuClear(menu: Widget): void;
+/**
+ * Enable (`1`) or disable (`0`) the item at `index`, counting separators and submenus.
+ * A disabled item is greyed out and can't be chosen. macOS only.
+ */
+export function menuSetItemEnabled(menu: Widget, index: number, enabled: number): void;
 export function menuAddItemWithShortcut(menu: Widget, title: string, shortcut: string, callback: () => void): void;
 export function menuAddStandardAction(menu: Widget, action: string, title: string, shortcut: string): void;
 export function menuBarCreate(): Widget;

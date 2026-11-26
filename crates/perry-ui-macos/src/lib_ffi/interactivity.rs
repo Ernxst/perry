@@ -110,6 +110,12 @@ pub extern "C" fn perry_ui_menu_clear(menu_handle: i64) {
     menu::clear(menu_handle);
 }
 
+/// Enable (1) or disable (0) the menu item at an index.
+#[no_mangle]
+pub extern "C" fn perry_ui_menu_set_item_enabled(menu_handle: i64, index: f64, enabled: f64) {
+    menu::set_item_enabled(menu_handle, index, enabled);
+}
+
 /// Add a separator to a menu.
 #[no_mangle]
 pub extern "C" fn perry_ui_menu_add_separator(menu_handle: i64) {
