@@ -1252,6 +1252,9 @@ fn install_keyboard_shortcut(
             flags |= NSEventModifierFlags::Control;
         }
         item.setKeyEquivalentModifierMask(flags);
+        // The item exists only to carry the key equivalent, so it stays out of the app menu.
+        item.setHidden(true);
+        item.setAllowsKeyEquivalentWhenHidden(true);
 
         item.setTarget(Some(&target));
         std::mem::forget(target);
