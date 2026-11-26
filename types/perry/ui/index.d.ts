@@ -1009,6 +1009,21 @@ export function widgetSetTooltip(widget: Widget, text: string): void;
  * value, so name a field with `Label` there. No-op on Windows and HarmonyOS.
  */
 export function widgetSetAccessibilityLabel(widget: Widget, text: string): void;
+
+/**
+ * Set the role a screen reader announces from an ARIA role, such as `"button"`,
+ * `"tab"` or `"navigation"`, making the widget an element VoiceOver stops on.
+ * `"presentation"` and `"none"` make it one VoiceOver skips; an unknown role reads
+ * as a group. macOS only.
+ */
+export function widgetSetAccessibilityRole(widget: Widget, role: string): void;
+
+/**
+ * Set an accessibility state from an ARIA attribute's name without `aria-`:
+ * `"expanded"`, `"selected"` or `"disabled"` with 0 or 1, or `"checked"` with 0, 1,
+ * or 2 for mixed. Other names do nothing. macOS only.
+ */
+export function widgetSetAccessibilityState(widget: Widget, name: string, value: number): void;
 /**
  * A caption for a form field. Web: a `<label for>` bound to `field` (or to the first
  * input, textarea or select inside it), so tapping the caption focuses the field and a

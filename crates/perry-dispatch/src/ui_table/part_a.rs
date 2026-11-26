@@ -1040,6 +1040,18 @@ pub(crate) const PERRY_UI_TABLE_PART_A: &[MethodRow] = &[
         ret: ReturnKind::Void,
     },
     MethodRow {
+        method: "widgetSetAccessibilityRole",
+        runtime: "perry_ui_widget_set_accessibility_role",
+        args: &[ArgKind::Widget, ArgKind::Str],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
+        method: "widgetSetAccessibilityState",
+        runtime: "perry_ui_widget_set_accessibility_state",
+        args: &[ArgKind::Widget, ArgKind::Str, ArgKind::F64],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
         method: "Label",
         runtime: "perry_ui_label_create",
         args: &[ArgKind::Str, ArgKind::Widget],

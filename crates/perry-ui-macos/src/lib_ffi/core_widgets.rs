@@ -118,6 +118,18 @@ pub extern "C" fn perry_ui_widget_set_accessibility_label(handle: i64, text_ptr:
     widgets::set_accessibility_label(handle, text_ptr as *const u8);
 }
 
+/// Set the role a screen reader announces, from an ARIA role.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_set_accessibility_role(handle: i64, role_ptr: i64) {
+    widgets::set_accessibility_role(handle, role_ptr as *const u8);
+}
+
+/// Set an accessibility state from an ARIA attribute's name, without `aria-`.
+#[no_mangle]
+pub extern "C" fn perry_ui_widget_set_accessibility_state(handle: i64, name_ptr: i64, value: f64) {
+    widgets::set_accessibility_state(handle, name_ptr as *const u8, value);
+}
+
 /// Create a Button. label_ptr = raw string, on_press = NaN-boxed closure.
 /// Returns widget handle.
 #[no_mangle]

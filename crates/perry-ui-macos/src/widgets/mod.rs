@@ -292,6 +292,104 @@ pub fn set_accessibility_label(handle: i64, text_ptr: *const u8) {
     }
 }
 
+/// The AppKit role and subrole that VoiceOver reads for an ARIA role, as
+/// WebKit maps them. `None` for `presentation` and `none`.
+fn accessibility_role(role: &str) -> Option<(&'static str, Option<&'static str>)> {
+    Some(match role {
+        "presentation" | "none" => return None,
+        "button" => ("AXButton", None),
+        "link" => ("AXLink", None),
+        "heading" => ("AXHeading", None),
+        "checkbox" => ("AXCheckBox", None),
+        "switch" => ("AXCheckBox", Some("AXSwitch")),
+        "radio" => ("AXRadioButton", None),
+        "radiogroup" => ("AXRadioGroup", None),
+        "tab" => ("AXRadioButton", Some("AXTabButton")),
+        "tablist" => ("AXTabGroup", None),
+        "list" | "listbox" => ("AXList", None),
+        "img" | "image" => ("AXImage", None),
+        "menu" | "menubar" => ("AXMenu", None),
+        "menuitem" | "menuitemcheckbox" | "menuitemradio" => ("AXMenuItem", None),
+        "progressbar" | "meter" => ("AXProgressIndicator", None),
+        "slider" => ("AXSlider", None),
+        "textbox" => ("AXTextField", None),
+        "searchbox" => ("AXTextField", Some("AXSearchField")),
+        "combobox" => ("AXComboBox", None),
+        "separator" => ("AXSplitter", None),
+        "table" | "grid" => ("AXTable", None),
+        "row" => ("AXRow", None),
+        "cell" | "gridcell" | "columnheader" | "rowheader" => ("AXCell", None),
+        "dialog" | "alertdialog" => ("AXGroup", Some("AXApplicationDialog")),
+        "alert" => ("AXGroup", Some("AXApplicationAlert")),
+        "status" => ("AXGroup", Some("AXApplicationStatus")),
+        "tooltip" => ("AXGroup", Some("AXUserInterfaceTooltip")),
+        "navigation" => ("AXGroup", Some("AXLandmarkNavigation")),
+        "main" => ("AXGroup", Some("AXLandmarkMain")),
+        "banner" => ("AXGroup", Some("AXLandmarkBanner")),
+        "contentinfo" => ("AXGroup", Some("AXLandmarkContentInfo")),
+        "complementary" => ("AXGroup", Some("AXLandmarkComplementary")),
+        "region" => ("AXGroup", Some("AXLandmarkRegion")),
+        "search" => ("AXGroup", Some("AXLandmarkSearch")),
+        _ => ("AXGroup", None),
+    })
+}
+
+/// Give a widget the role VoiceOver reads for an ARIA role, and make it an
+/// element VoiceOver stops on; `presentation` or `none` makes it one VoiceOver
+/// skips. An empty role leaves the widget as it was.
+pub fn set_accessibility_role(handle: i64, role_ptr: *const u8) {
+    let role = unsafe { perry_ffi::copy_string_from_raw(role_ptr) };
+    let Some(view) = get_widget(handle) else { return };
+    if role.is_empty() {
+        return;
+    }
+    unsafe {
+        let Some((ax_role, subrole)) = accessibility_role(role.trim()) else {
+            let _: () = objc2::msg_send![&*view, setAccessibilityElement: false];
+            return;
+        };
+        let _: () = objc2::msg_send![&*view, setAccessibilityElement: true];
+        let ax_role = objc2_foundation::NSString::from_str(ax_role);
+        let _: () = objc2::msg_send![&*view, setAccessibilityRole: &*ax_role];
+        if let Some(subrole) = subrole {
+            let subrole = objc2_foundation::NSString::from_str(subrole);
+            let _: () = objc2::msg_send![&*view, setAccessibilitySubrole: &*subrole];
+        }
+    }
+}
+
+/// Set one of a widget's accessibility states from its ARIA attribute:
+/// `expanded`, `selected`, `checked` (0, 1, or 2 for mixed) or `disabled`.
+/// Other names do nothing.
+pub fn set_accessibility_state(handle: i64, name_ptr: *const u8, value: f64) {
+    let name = unsafe { perry_ffi::copy_string_from_raw(name_ptr) };
+    let Some(view) = toggle::switch(handle).or_else(|| get_widget(handle)) else {
+        return;
+    };
+    let on = value != 0.0;
+    unsafe {
+        match name.as_str() {
+            "expanded" => {
+                let _: () = objc2::msg_send![&*view, setAccessibilityExpanded: on];
+            }
+            "selected" => {
+                let _: () = objc2::msg_send![&*view, setAccessibilitySelected: on];
+            }
+            "checked" => {
+                let number: *mut objc2::runtime::AnyObject = objc2::msg_send![
+                    objc2::runtime::AnyClass::get(c"NSNumber").unwrap(),
+                    numberWithInteger: value as isize
+                ];
+                let _: () = objc2::msg_send![&*view, setAccessibilityValue: number];
+            }
+            "disabled" => {
+                let _: () = objc2::msg_send![&*view, setAccessibilityEnabled: !on];
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Set the hidden state of a widget.
 /// When unhiding a view that NSStackView detached (no superview), re-inserts it
 /// into its parent NSStackView at the original position.
