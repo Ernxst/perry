@@ -155,10 +155,15 @@ export function createNativeRenderer(driver: NativeDriver) {
 
   // A click is a left click. A link's reports no modifier keys either, since a router link skips
   // modified clicks for the browser to open in a new tab, and natively nothing would open it.
+  // The native side reports a click only to the innermost element that takes it, so a click
+  // bubbles from there through the elements around it, as on the web.
   function emitter(node: NativeNode): Emit {
     return (handler, state) => {
       const callback = node.props[handler];
-      const target = { ...state, getAttribute: (name: string) => node.props[name] == null ? null : String(node.props[name]) };
+      const targetOf = (from: NativeNode, fromState: typeof state) =>
+        ({ ...fromState, getAttribute: (name: string) => from.props[name] == null ? null : String(from.props[name]) });
+      const target = targetOf(node, state);
+      let stopped = false;
       const event = {
         currentTarget: target,
         target,
@@ -167,8 +172,13 @@ export function createNativeRenderer(driver: NativeDriver) {
         ...(node.tag === "a" || !driver.modifiers ? NO_MODIFIERS : driver.modifiers()),
         defaultPrevented: false,
         preventDefault() { event.defaultPrevented = true; },
+        stopPropagation() { stopped = true; },
       };
       if (typeof callback === "function") callback(event);
+      for (let around = handler === "onClick" ? node.parent : null; around && !stopped; around = around.parent) {
+        const outer = around.props.onClick;
+        if (typeof outer === "function") outer({ ...event, currentTarget: targetOf(around, { value: "", checked: false }) });
+      }
       if (handler === "onClick" && node.kind === "Button" && node.props.type !== "button") submit(node);
       return !event.defaultPrevented;
     };
