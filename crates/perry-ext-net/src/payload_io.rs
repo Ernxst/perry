@@ -238,8 +238,9 @@ extern "C" fn sink(completion: *const tl::NetCompletion) {
                 // A listener may reopen either object during the first emit.
                 let wrapper_record = scope.root_nanbox(prepare_socket_closed(owner.get(), &closed));
                 let parent_record = scope.root_nanbox(prepare_socket_closed(original.get(), event));
-                queue_socket_closed(owner.get(), wrapper_record.get());
-                queue_socket_closed(original.get(), parent_record.get());
+                // Node's TLSSocket emits its 'close' from the parent's.
+                emit_socket_closed(original.get(), parent_record.get());
+                emit_socket_closed(owner.get(), wrapper_record.get());
             } else {
                 socket_closed(owner.get(), event);
             }
@@ -276,12 +277,32 @@ extern "C" fn sink(completion: *const tl::NetCompletion) {
                     unsafe { event.code() }.unwrap_or("EIO"),
                     target.as_ref(),
                 ));
+                // SAFETY: as above.
+                // SAFETY: as above.
+                let error = match unsafe { event.syscall() } {
+                    Some("getaddrinfo") => {
+                        super::payload_lookup::failed(owner.get(), error.get());
+                        error
+                    }
+                    Some("connect") => match super::payload_lookup::connect_error(
+                        owner.get(),
+                        error.get(),
+                        target.as_ref(),
+                    ) {
+                        Some(error) => scope.root_nanbox(error),
+                        None => return,
+                    },
+                    _ => error,
+                };
                 socket::destroy(owner.get(), error.get());
             }
         }
         tl::NET_TIMER => {
             events::emit(owner.get(), "timeout", &[]);
         }
+        // SAFETY: The runtime keeps the completion and its spans valid until this sink returns.
+        tl::NET_LOOKUP => super::payload_lookup::resolved(owner.get(), unsafe { event.bytes() }),
+        tl::NET_ATTEMPT => super::payload_lookup::attempted(owner.get(), event),
         _ => {}
     }
 }
@@ -661,13 +682,13 @@ pub(crate) fn wrote(owner: f64, user: u64, len: usize, queued: usize, sync: bool
         }
         if sync {
             // Node's `onwrite` for a write the kernel took at once defers
-            // `afterWrite` with `process.nextTick`: the callback runs as a
-            // `TickObject` in the socket's async context.
-            let tick =
-                scope.root_nanbox(provider::new(b"TickObject", provider::id(resource.get())));
-            provider::notify(tick.get());
-            events::call_in(tick.get(), callback.get(), JsThis::UNDEFINED, &[null]);
-            provider::retire(tick.get());
+            // `afterWrite` with `process.nextTick`. The transport already
+            // queued that tick inside the caller's `write()`
+            // (`turnloop_net::transport::post_whole`), and this completion
+            // runs in it: the real queued TickObject owns the job's async
+            // context, hooks and exception restoration, so the callback is a
+            // plain call, not a second TickObject.
+            events::call(callback.get(), JsThis::UNDEFINED, &[null]);
         } else {
             events::call_in(resource.get(), callback.get(), JsThis::UNDEFINED, &[null]);
         }
@@ -738,9 +759,11 @@ pub(crate) fn socket_closed(owner: f64, event: &tl::NetCompletion) {
     let scope = TransientRootScope::enter();
     let owner = scope.root_nanbox(owner);
     let record = scope.root_nanbox(prepare_socket_closed(owner.get(), event));
-    // Native acknowledgement may arrive before the logical destroy jobs run.
-    // Share their FIFO so cancellation and error precede close/provider retirement.
-    queue_socket_closed(owner.get(), record.get());
+    // The runtime delivers a closed socket's Closed in the close-callbacks
+    // phase, after the ticks that cancel its callbacks and emit its error:
+    // 'close' is emitted inside it, as Node emits it inside the handle's
+    // close callback.
+    emit_socket_closed(owner.get(), record.get());
 }
 
 fn prepare_socket_closed(owner: f64, event: &tl::NetCompletion) -> f64 {
@@ -754,13 +777,13 @@ fn prepare_socket_closed(owner: f64, event: &tl::NetCompletion) -> f64 {
     // immediately, before allocation.
     let parent = scope.root_nanbox(unsafe { np::link_event_owner(link) }.unwrap_or(owner.get()));
     let state = scope.root_nanbox(socket::state(owner.get()));
-    let mut record = scope.root_nanbox(
+    // A socket closed while resolving had no handle; destroy filed it as [0; 4].
+    let mut record = scope.root_nanbox(closed::take(
+        state.get(),
         // SAFETY: The runtime keeps the completion and its spans valid until this sink returns;
         // these reads do not retain the borrowed metadata.
-        unsafe { event.closed_handle_parts() }
-            .map(|parts| closed::take(state.get(), parts))
-            .unwrap_or_else(p::undefined),
-    );
+        unsafe { event.closed_handle_parts() }.unwrap_or([0; 4]),
+    ));
     // SAFETY: The retained link belongs to this agent; projection checks family/open lifecycle, and
     // field/core access ends before allocation or JS.
     if event.flags & tl::NET_FLAG_STALE == 0 && unsafe { p::socket_ptr(link) }.is_ok() {

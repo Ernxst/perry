@@ -40,15 +40,15 @@ crates/perry-runtime/src/typed_feedback.rs	2450
 # Snapshot census runner (instr-only, #13935); split after #14259 lands (snap census owner).
 crates/perry-runtime/src/snap_census/runner.rs	4942
 # Native ABI proof cases; test organization is a separate follow-up.
-crates/perry-codegen/tests/native_proof_regressions.rs	16607
+crates/perry-codegen/tests/native_proof_regressions.rs	16613
 # Lowering report schema and its emitters; split emitters in a follow-up.
 crates/perry/src/commands/compile/lowering_report.rs	2321
 # CallInliner argument and return remapping share one walker; split the traversal in a follow-up.
-crates/perry-transform/src/inline/call_inliner.rs	2145
+crates/perry-transform/src/inline/call_inliner.rs	2146
 # Web Streams controllers share state; extract reader, tee and BYOB groups in a follow-up.
 crates/perry-stdlib/src/streams.rs	2171
 # Collection policy and debt accounting share phase state; decomposition is tracked in #1435.
-crates/perry-runtime/src/gc/policy.rs	2892
+crates/perry-runtime/src/gc/policy.rs	2877
 # Shape registry table and publication invariants require a coordinated split.
 crates/perry-runtime/src/object/shapes.rs	5642
 # Generated upstream WinRT collections bindings; preserve the vendor snapshot.
