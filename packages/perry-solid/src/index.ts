@@ -5,7 +5,7 @@ import {
   Image, ImageFile, imageSetOnLoad, ProgressView, AttributedText, attributedTextAppend, attributedTextClear,
   textSetString, buttonSetTitle, textSetFontSize, textSetFontWeight, textSetFontFamily, textSetColor, textSetDecoration, textSetWraps,
   textfieldSetString, textareaSetString, toggleSetState, toggleSetStyle, sliderSetStep, pickerAddItem, pickerSetSelected, datePickerSetDate,
-  textfieldSetOnSubmit, WebView, webviewLoadUrl, Combobox, comboboxAddItem, comboboxSetValue,
+  textfieldSetOnSubmit, textfieldFocus, WebView, webviewLoadUrl, Combobox, comboboxAddItem, comboboxSetValue,
   widgetAddChild, widgetAddChildAt, widgetRemoveChild, widgetReorderChild,
   widgetSetWidth, widgetSetHeight, widgetSetOpacity,
   widgetSetHidden, widgetSetEnabled, widgetSetTooltip, widgetSetAccessibilityLabel, widgetSetAccessibilityRole, widgetSetAccessibilityState, widgetSetOnClick,
@@ -203,9 +203,10 @@ const controls = new Map<number, Control>();
 const options = new Map<number, Option>();
 let nextOption = -1;
 const canvases = new Map<number, CanvasElement>();
-// A <label> natively is a stack; clicking its text flips the checkbox inside it, as on the web.
+// A <label> natively is a stack; clicking its text flips the checkbox inside it, or focuses the
+// text field inside it, as on the web.
 const labels = new Map<number, { control: number }>();
-/** The label each of a label's other children flips the checkbox of when clicked. */
+/** The label each of a label's other children acts for when clicked. */
 const labelledBy = new Map<number, { control: number }>();
 // A vertical NSStackView lets text run through its trailing padding. Perry's max-width
 // slot holds a child inside both paddings, so text and rows in a column go into one.
@@ -341,6 +342,9 @@ function createCombobox(control: Control): Widget {
   for (const handle of datalist?.options ?? []) comboboxAddItem(combobox, optionValue(options.get(handle)!));
   return combobox;
 }
+
+// The input types drawn as a text field, which a label's click focuses.
+const TEXT_TYPES = new Set(["text", "password", "search", "email", "url", "tel", "number"]);
 
 function createControl(control: Control): Widget {
   const props = control.props;
@@ -1175,7 +1179,9 @@ const driver: NativeDriver = {
       else {
         if (!labelledBy.has(child)) addClick(child as Widget, () => {
           const control = controls.get(labelledBy.get(child)?.control ?? 0);
-          if (control && control.inner !== 0 && (control.props.type === "checkbox" || control.props.type === "radio")) toggle(control);
+          if (!control || control.inner === 0) return;
+          if (control.props.type === "checkbox" || control.props.type === "radio") toggle(control);
+          else if (control.kind === "Input" && TEXT_TYPES.has(String(control.props.type ?? "text"))) textfieldFocus(control.inner);
         });
         labelledBy.set(child, label);
       }
