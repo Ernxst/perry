@@ -38,6 +38,7 @@ pub mod rich_text;
 pub mod rich_tooltip;
 pub mod scrollview;
 pub mod securefield;
+pub mod popover;
 pub mod sheet;
 pub mod slider;
 pub mod spacer;

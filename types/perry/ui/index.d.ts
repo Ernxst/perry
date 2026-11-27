@@ -1876,6 +1876,20 @@ export function sheetCreate(body: Widget, width: number, height: number): Widget
 export function sheetPresent(sheet: Widget): void;
 export function sheetDismiss(sheet: Widget): void;
 
+/**
+ * Create a popover holding `body`, which floats beside another widget once shown, until
+ * `popoverClose`; a press outside it or Escape doesn't close it. macOS only.
+ */
+export function popoverCreate(body: Widget): Widget;
+/**
+ * Show the popover beside `anchor`, sized to fit its body as it is now. `side` is 0 for above the
+ * anchor, 1 for its right, 2 for below and 3 for its left; macOS picks another side when there's
+ * no room.
+ */
+export function popoverShow(popover: Widget, anchor: Widget, side: number): void;
+/** Close the popover. */
+export function popoverClose(popover: Widget): void;
+
 // ---------------------------------------------------------------------------
 // SplitView / FrameSplit
 // ---------------------------------------------------------------------------

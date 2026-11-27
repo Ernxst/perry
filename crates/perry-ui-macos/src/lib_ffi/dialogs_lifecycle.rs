@@ -84,6 +84,24 @@ pub extern "C" fn perry_ui_sheet_dismiss(sheet_handle: i64) {
     widgets::sheet::dismiss(sheet_handle);
 }
 
+/// Create a popover holding a body widget. Returns the popover handle.
+#[no_mangle]
+pub extern "C" fn perry_ui_popover_create(body_handle: i64) -> i64 {
+    widgets::popover::create(body_handle)
+}
+
+/// Show a popover beside an anchor widget, on the side given (0 top, 1 right, 2 bottom, 3 left).
+#[no_mangle]
+pub extern "C" fn perry_ui_popover_show(popover_handle: i64, anchor_handle: i64, side: f64) {
+    widgets::popover::show(popover_handle, anchor_handle, side);
+}
+
+/// Close a popover.
+#[no_mangle]
+pub extern "C" fn perry_ui_popover_close(popover_handle: i64) {
+    widgets::popover::close(popover_handle);
+}
+
 // =============================================================================
 // App Lifecycle Hooks
 // =============================================================================

@@ -835,6 +835,25 @@ pub(crate) const PERRY_UI_TABLE_PART_B: &[MethodRow] = &[
         args: &[ArgKind::Widget],
         ret: ReturnKind::Void,
     },
+    // ---- Popover ----
+    MethodRow {
+        method: "popoverCreate",
+        runtime: "perry_ui_popover_create",
+        args: &[ArgKind::Widget],
+        ret: ReturnKind::Widget,
+    },
+    MethodRow {
+        method: "popoverShow",
+        runtime: "perry_ui_popover_show",
+        args: &[ArgKind::Widget, ArgKind::Widget, ArgKind::F64],
+        ret: ReturnKind::Void,
+    },
+    MethodRow {
+        method: "popoverClose",
+        runtime: "perry_ui_popover_close",
+        args: &[ArgKind::Widget],
+        ret: ReturnKind::Void,
+    },
     // ---- FrameSplit (NSSplitView wrapper) ----
     MethodRow {
         method: "frameSplitCreate",
