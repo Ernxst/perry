@@ -12,7 +12,7 @@ import {
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetMaxWidthAlignment, widgetGetFrame, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
-  currentModifiers, widgetSetOnMouseDown, widgetSetOnWindowMouseDown, sheetCreate, sheetPresent, sheetDismiss, widgetSetOnResize, type PointerEvent, type State, type Widget,
+  currentModifiers, widgetSetOnMouseDown, widgetSetOnWindowMouseDown, sheetCreate, sheetPresent, sheetDismiss, widgetSetOnResize, popoverCreate, popoverShow, popoverClose, type PointerEvent, type State, type Widget,
 } from "perry/ui";
 import { openURL } from "perry/system";
 import { CanvasElement, setFocusedKeys } from "perry-browser";
@@ -560,8 +560,13 @@ interface Dialog {
   sheet: Widget;
   scroll: Widget;
   holder: Widget;
+  // The popover showDialogBeside floats it in and the column in that holding the box, made on its
+  // first call.
+  popover: Widget;
+  popoverHolder: Widget;
   open: boolean;
   modal: boolean;
+  floating: boolean;
   emit: (handler: string, state: ControlState) => void;
 }
 const dialogs = new Map<number, Dialog>();
@@ -731,7 +736,8 @@ function createDetails(): Widget {
 }
 
 // A <dialog> is a placeholder holding its box, shown in place while it's open. showModal()
-// moves the box into a sheet; the placeholder keeps the dialog's place among its siblings.
+// moves the box into a sheet, and showDialogBeside into a popover; the placeholder keeps the
+// dialog's place among its siblings.
 function createDialog(emit: Dialog["emit"]): Widget {
   const box = makeColumn(8);
   setPadding(box, DIALOG.padding);
@@ -744,7 +750,7 @@ function createDialog(emit: Dialog["emit"]): Widget {
   widgetSetHidden(placeholder, 1);
   slotted.add(placeholder);
   bodies.set(placeholder, box);
-  dialogs.set(placeholder, { placeholder, box, sheet: 0 as Widget, scroll: 0 as Widget, holder: 0 as Widget, open: false, modal: false, emit });
+  dialogs.set(placeholder, { placeholder, box, sheet: 0 as Widget, scroll: 0 as Widget, holder: 0 as Widget, popover: 0 as Widget, popoverHolder: 0 as Widget, open: false, modal: false, floating: false, emit });
   return placeholder;
 }
 
@@ -772,8 +778,37 @@ function moveBox(dialog: Dialog, from: Widget, to: Widget, index: number): void 
   widgetAddChildAt(to, dialog.box, index);
 }
 
+const SIDES = { top: 0, right: 1, bottom: 2, left: 3 };
+
+function popoverFor(dialog: Dialog): Widget {
+  if (dialog.popover) return dialog.popover;
+  dialog.popoverHolder = NativeVStack(0, []);
+  dialog.popover = popoverCreate(dialog.popoverHolder);
+  return dialog.popover;
+}
+
+/**
+ * Shows a dialog natively in a macOS popover beside `anchorRef`, an element's ref, sized to the
+ * dialog's content when it opens; macOS picks another side when `side` has no room. Only the
+ * dialog's `close()` closes it: neither a press outside it nor Escape does.
+ */
+export function showDialogBeside(dialogRef: unknown, anchorRef: unknown, side: keyof typeof SIDES): void {
+  const dialog = dialogs.get((dialogRef as { handle: number }).handle)!;
+  if (dialog.open) {
+    if (dialog.floating) return;
+    throw new Error("A dialog already open can't be shown beside another element");
+  }
+  const popover = popoverFor(dialog);
+  dialog.open = true;
+  dialog.floating = true;
+  moveBox(dialog, dialog.placeholder, dialog.popoverHolder, 0);
+  widgetSetBorderWidth(dialog.box, 0);
+  popoverShow(popover, (anchorRef as { handle: number }).handle as Widget, SIDES[side]);
+}
+
 function showDialog(dialog: Dialog, modal: boolean): void {
   if (dialog.open) {
+    if (dialog.floating) throw new Error("A dialog shown beside another element can't be shown again");
     if (dialog.modal === modal) return;
     throw new Error(`A dialog already open ${dialog.modal ? "modally" : "in place"} can't be shown ${modal ? "modally" : "in place"}`);
   }
@@ -795,9 +830,15 @@ function hideDialog(dialog: Dialog): boolean {
     widgetSetMaxWidth(dialog.box, 1e6);
     widgetSetBorderWidth(dialog.box, 1);
   }
+  if (dialog.floating) {
+    popoverClose(dialog.popover);
+    moveBox(dialog, dialog.popoverHolder, dialog.placeholder, 0);
+    widgetSetBorderWidth(dialog.box, 1);
+  }
   widgetSetHidden(dialog.placeholder, 1);
   dialog.open = false;
   dialog.modal = false;
+  dialog.floating = false;
   return true;
 }
 
