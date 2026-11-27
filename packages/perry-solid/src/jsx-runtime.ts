@@ -155,10 +155,9 @@ export namespace JSX {
     summary: TextProps;
     /**
      * A box shown in place while `open`. Through its `ref`, `show()`, `showModal()`, `close()`,
-     * `open` and `returnValue` work in both builds; `showModal()` centres the box, at most 480
-     * pixels wide, over the window, which it dims. `onClose` fires when `close()` closes it. Natively
-     * Escape doesn't close it, `form method="dialog"` doesn't either, and the root that `render`
-     * mounts into must be a `ZStack`.
+     * `open` and `returnValue` work in both builds; `showModal()` shows the box, at most 480
+     * pixels wide, over the window, which it dims, and natively as a sheet. `onClose` fires when
+     * `close()` closes it. Natively Escape doesn't close it, and `form method="dialog"` doesn't either.
      */
     dialog: BlockProps & {
       open?: boolean;

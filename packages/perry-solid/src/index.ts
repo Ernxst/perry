@@ -12,7 +12,7 @@ import {
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetMaxWidthAlignment, widgetGetFrame, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
-  currentModifiers, widgetSetOnMouseDown, type PointerEvent, type State, type Widget,
+  currentModifiers, widgetSetOnMouseDown, sheetCreate, sheetPresent, sheetDismiss, type PointerEvent, type State, type Widget,
 } from "perry/ui";
 import { openURL } from "perry/system";
 import { CanvasElement } from "perry-browser";
@@ -59,10 +59,8 @@ const SPINNER_SIZE = 16;
 const FRAME = { width: 300, height: 150 };
 // A <dialog>'s box, matching the web stylesheet's.
 const DIALOG = { padding: 16, radius: 10 };
-// A modal dialog's widest box and its distance from the window's edges, and the dimming a
-// browser's ::backdrop gives the page behind it.
-const MODAL = { width: 480, margin: 20 };
-const EQUAL_CENTERING = 4;
+// A modal dialog's widest box.
+const MODAL_WIDTH = 480;
 // A browser's default spacing between table cells and padding inside them, and the width a
 // column takes when the first row gives none.
 const TABLE = { spacing: 2, padding: 1, width: 100 };
@@ -82,7 +80,6 @@ const COLOURS = {
   track: [[0, 0, 0, 0.12], [1, 1, 1, 0.15]],
   border: [[0, 0, 0, 0.2], [1, 1, 1, 0.2]],
   box: [[1, 1, 1, 1], [0.2, 0.2, 0.2, 1]],
-  backdrop: [[0, 0, 0, 0.1], [0, 0, 0, 0.4]],
   mark: [[1, 1, 0, 1], [1, 1, 0, 1]],
 } satisfies Record<string, [Rgba, Rgba]>;
 type Colour = keyof typeof COLOURS;
@@ -557,15 +554,14 @@ function setFrameProperty(frame: Frame, name: string, value: unknown): boolean {
 interface Dialog {
   placeholder: Widget;
   box: Widget;
+  // The sheet showModal() presents and the view it holds the box in, made on its first call.
+  sheet: Widget;
+  holder: Widget;
   open: boolean;
   modal: boolean;
   emit: (handler: string, state: ControlState) => void;
 }
 const dialogs = new Map<number, Dialog>();
-let renderRoot = 0;
-let modalBackdrop = 0 as Widget;
-let modalLayer = 0 as Widget;
-let modalCount = 0;
 /** Texts in the body font, which a header cell makes bold. */
 const plainTexts = new Set<number>();
 const headerCells = new Set<number>();
@@ -703,8 +699,7 @@ function createDetails(): Widget {
 }
 
 // A <dialog> is a placeholder holding its box, shown in place while it's open. showModal()
-// moves the box into a layer over the whole window, as a browser draws it over the page, since
-// Perry's sheets can't be dismissed; the placeholder keeps the dialog's place among its siblings.
+// moves the box into a sheet; the placeholder keeps the dialog's place among its siblings.
 function createDialog(emit: Dialog["emit"]): Widget {
   const box = makeColumn(8);
   setPadding(box, DIALOG.padding);
@@ -717,29 +712,17 @@ function createDialog(emit: Dialog["emit"]): Widget {
   widgetSetHidden(placeholder, 1);
   slotted.add(placeholder);
   bodies.set(placeholder, box);
-  dialogs.set(placeholder, { placeholder, box, open: false, modal: false, emit });
+  dialogs.set(placeholder, { placeholder, box, sheet: 0 as Widget, holder: 0 as Widget, open: false, modal: false, emit });
   return placeholder;
 }
 
-// The render root is a ZStack, so the backdrop and the layer that centres a modal box, added
-// last, cover everything the app renders. AppKit passes a click that lands on a view without a
-// mouse-down handler of its own, such as the layer, to a control beneath it, so the backdrop is
-// an empty label, which takes the click itself. It stops the click only as the layer's sibling,
-// not as its parent. A click recognizer would stop it too, but it takes the clicks of the
-// buttons inside its view, the dialog's own among them.
-function getModalLayer(): Widget {
-  if (modalLayer) return modalLayer;
-  if (!renderRoot) throw new Error("showModal() needs the app rendered with render()");
-  modalBackdrop = Text("");
-  setBackground(modalBackdrop, "backdrop");
-  modalLayer = NativeVStack(0, [NativeVStack(0, []), NativeVStack(0, [])]);
-  stackSetDistribution(modalLayer, EQUAL_CENTERING);
-  setPadding(modalLayer, MODAL.margin);
-  for (const view of [modalBackdrop, modalLayer]) {
-    widgetSetHidden(view, 1);
-    widgetAddChild(renderRoot as Widget, view);
-  }
-  return modalLayer;
+// The sheet's background matches the box's, so the box drops its border inside it.
+function sheetFor(dialog: Dialog): Widget {
+  if (dialog.sheet) return dialog.sheet;
+  dialog.holder = NativeVStack(0, []);
+  setBackground(dialog.holder, "box");
+  dialog.sheet = sheetCreate(dialog.holder, MODAL_WIDTH, 1);
+  return dialog.sheet;
 }
 
 function moveBox(dialog: Dialog, from: Widget, to: Widget, index: number): void {
@@ -755,23 +738,20 @@ function showDialog(dialog: Dialog, modal: boolean): void {
   dialog.open = true;
   dialog.modal = modal;
   if (!modal) return widgetSetHidden(dialog.placeholder, 0);
-  const layer = getModalLayer();
-  moveBox(dialog, dialog.placeholder, layer, 1);
-  widgetSetMaxWidth(dialog.box, MODAL.width);
-  modalCount++;
-  widgetSetHidden(modalBackdrop, 0);
-  widgetSetHidden(layer, 0);
+  const sheet = sheetFor(dialog);
+  moveBox(dialog, dialog.placeholder, dialog.holder, 0);
+  widgetSetMaxWidth(dialog.box, MODAL_WIDTH);
+  widgetSetBorderWidth(dialog.box, 0);
+  sheetPresent(sheet);
 }
 
 function hideDialog(dialog: Dialog): boolean {
   if (!dialog.open) return false;
   if (dialog.modal) {
-    moveBox(dialog, modalLayer, dialog.placeholder, 0);
+    sheetDismiss(dialog.sheet);
+    moveBox(dialog, dialog.holder, dialog.placeholder, 0);
     widgetSetMaxWidth(dialog.box, 1e6);
-    if (--modalCount === 0) {
-      widgetSetHidden(modalBackdrop, 1);
-      widgetSetHidden(modalLayer, 1);
-    }
+    widgetSetBorderWidth(dialog.box, 1);
   }
   widgetSetHidden(dialog.placeholder, 1);
   dialog.open = false;
@@ -799,7 +779,7 @@ class MeasuredElement {
 /** What a dialog's `ref` gets natively: the HTMLDialogElement methods both builds support. */
 class DialogElement extends MeasuredElement {
   returnValue = "";
-  // The box, which showModal() moves out of the placeholder into the modal layer.
+  // The box, which showModal() moves out of the placeholder into a sheet.
   protected override get measured(): Widget { return dialogs.get(this.handle)!.box; }
   get open(): boolean { return dialogs.get(this.handle)!.open; }
   show(): void { showDialog(dialogs.get(this.handle)!, false); }
@@ -1190,17 +1170,13 @@ const driver: NativeDriver = {
 
 const native = createNativeRenderer(driver);
 export const h = native.h;
-/** Mounts the app into a native ZStack, which a modal dialog's layer then covers. */
+/** Mounts the app into a native stack. */
 export function render(code: () => JSX.Element, root: Widget): () => void {
-  renderRoot = root;
   track(root, root);
   return native.render(code as Parameters<typeof native.render>[0], root);
 }
 
-/**
- * Mounts the app in a page that scrolls as a browser window does, and returns the window's body.
- * A modal dialog covers the window rather than the page.
- */
+/** Mounts the app in a page that scrolls as a browser window does, and returns the window's body. */
 export function renderScrolling(code: () => JSX.Element): Widget {
   const body = NativeZStack();
   const scroll = NativeScrollView();
@@ -1210,7 +1186,6 @@ export function renderScrolling(code: () => JSX.Element): Widget {
   widgetMatchParentWidth(scroll);
   widgetMatchParentHeight(scroll);
   widgetMatchParentWidth(page);
-  renderRoot = body;
   track(body, page);
   native.render(code as Parameters<typeof native.render>[0], page);
   return body;
