@@ -12,7 +12,7 @@ import {
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetMaxWidthAlignment, widgetGetFrame, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
-  currentModifiers, widgetSetOnMouseDown, sheetCreate, sheetPresent, sheetDismiss, type PointerEvent, type State, type Widget,
+  currentModifiers, widgetSetOnMouseDown, sheetCreate, sheetPresent, sheetDismiss, widgetSetOnResize, type PointerEvent, type State, type Widget,
 } from "perry/ui";
 import { openURL } from "perry/system";
 import { CanvasElement } from "perry-browser";
@@ -59,8 +59,9 @@ const SPINNER_SIZE = 16;
 const FRAME = { width: 300, height: 150 };
 // A <dialog>'s box, matching the web stylesheet's.
 const DIALOG = { padding: 16, radius: 10 };
-// A modal dialog's widest box.
-const MODAL_WIDTH = 480;
+// A modal dialog's width, and the space it leaves above and below inside the window, past which
+// it scrolls.
+const MODAL = { width: 480, margin: 20 };
 // A browser's default spacing between table cells and padding inside them, and the width a
 // column takes when the first row gives none.
 const TABLE = { spacing: 2, padding: 1, width: 100 };
@@ -554,8 +555,10 @@ function setFrameProperty(frame: Frame, name: string, value: unknown): boolean {
 interface Dialog {
   placeholder: Widget;
   box: Widget;
-  // The sheet showModal() presents and the view it holds the box in, made on its first call.
+  // The sheet showModal() presents, the scroll view filling it and the column in that holding the
+  // box, made on its first call.
   sheet: Widget;
+  scroll: Widget;
   holder: Widget;
   open: boolean;
   modal: boolean;
@@ -712,16 +715,26 @@ function createDialog(emit: Dialog["emit"]): Widget {
   widgetSetHidden(placeholder, 1);
   slotted.add(placeholder);
   bodies.set(placeholder, box);
-  dialogs.set(placeholder, { placeholder, box, sheet: 0 as Widget, holder: 0 as Widget, open: false, modal: false, emit });
+  dialogs.set(placeholder, { placeholder, box, sheet: 0 as Widget, scroll: 0 as Widget, holder: 0 as Widget, open: false, modal: false, emit });
   return placeholder;
 }
 
-// The sheet's background matches the box's, so the box drops its border inside it.
+// The sheet's background matches the box's, so the box drops its border inside it. A scroll view
+// has no height of its own, so it takes the column's, up to the window's.
 function sheetFor(dialog: Dialog): Widget {
   if (dialog.sheet) return dialog.sheet;
   dialog.holder = NativeVStack(0, []);
+  dialog.scroll = NativeScrollView();
+  scrollviewSetChild(dialog.scroll, dialog.holder);
+  widgetMatchParentWidth(dialog.holder);
+  widgetSetWidth(dialog.scroll, MODAL.width);
   setBackground(dialog.holder, "box");
-  dialog.sheet = sheetCreate(dialog.holder, MODAL_WIDTH, 1);
+  setBackground(dialog.scroll, "box");
+  widgetSetOnResize(dialog.holder, (_, height) => {
+    const room = widgetGetFrame(windowWidget, 3) - 2 * MODAL.margin;
+    widgetSetHeight(dialog.scroll, room > 0 ? Math.min(height, room) : height);
+  });
+  dialog.sheet = sheetCreate(dialog.scroll, MODAL.width, 1);
   return dialog.sheet;
 }
 
@@ -740,7 +753,7 @@ function showDialog(dialog: Dialog, modal: boolean): void {
   if (!modal) return widgetSetHidden(dialog.placeholder, 0);
   const sheet = sheetFor(dialog);
   moveBox(dialog, dialog.placeholder, dialog.holder, 0);
-  widgetSetMaxWidth(dialog.box, MODAL_WIDTH);
+  widgetSetMaxWidth(dialog.box, MODAL.width);
   widgetSetBorderWidth(dialog.box, 0);
   sheetPresent(sheet);
 }
