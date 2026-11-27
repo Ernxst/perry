@@ -1425,7 +1425,8 @@ objc2::define_class!(
         }
 
         /// A click on a control inside the view is the control's: without this, the recognizer
-        /// holds the mouse-down and the control never sees it.
+        /// holds the mouse-down and the control never sees it. A label is an `NSTextField` too,
+        /// but takes no clicks of its own.
         #[unsafe(method(gestureRecognizer:shouldAttemptToRecognizeWithEvent:))]
         fn should_attempt(&self, recognizer: &AnyObject, event: &AnyObject) -> objc2::runtime::Bool {
             unsafe {
@@ -1442,9 +1443,16 @@ objc2::define_class!(
                 };
                 let mut hit: *mut AnyObject = objc2::msg_send![view, hitTest: point];
                 let control = AnyClass::get(c"NSControl").unwrap();
+                let text_field = AnyClass::get(c"NSTextField").unwrap();
                 while !hit.is_null() && hit != view {
                     let is_control: bool = objc2::msg_send![hit, isKindOfClass: control];
-                    if is_control {
+                    let is_label = {
+                        let is_text: bool = objc2::msg_send![hit, isKindOfClass: text_field];
+                        let editable: bool = if is_text { objc2::msg_send![hit, isEditable] } else { false };
+                        let selectable: bool = if is_text { objc2::msg_send![hit, isSelectable] } else { false };
+                        is_text && !editable && !selectable
+                    };
+                    if is_control && !is_label {
                         return objc2::runtime::Bool::NO;
                     }
                     hit = objc2::msg_send![hit, superview];
