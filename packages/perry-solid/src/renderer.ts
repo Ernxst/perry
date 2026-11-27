@@ -29,8 +29,20 @@ export const For = SolidFor as <T>(props: {
   children: (item: T, index: Accessor<number>) => JSX.Element;
 }) => JSX.Element;
 
-/** Calls the element's handler for an event; false when the handler called `preventDefault`. */
-export type Emit = (handler: string, state: ControlState) => boolean;
+/** What a key event adds to the event a handler gets. */
+export interface KeyDetail {
+  key: string;
+  code: string;
+  repeat: boolean;
+  /** Called when a handler stops the event, so whatever sent it can stop it too. */
+  stopPropagation(): void;
+}
+
+/**
+ * Calls the element's handler for an event; false when the handler called `preventDefault`. A
+ * click and a key event bubble through the elements around it.
+ */
+export type Emit = (handler: string, state: ControlState, key?: KeyDetail) => boolean;
 
 /** Backend operations. Handles belong to the native widget registry. */
 export interface NativeDriver {
@@ -158,7 +170,7 @@ export function createNativeRenderer(driver: NativeDriver) {
   // The native side reports a click only to the innermost element that takes it, so a click
   // bubbles from there through the elements around it, as on the web.
   function emitter(node: NativeNode): Emit {
-    return (handler, state) => {
+    return (handler, state, key) => {
       const callback = node.props[handler];
       const targetOf = (from: NativeNode, fromState: typeof state) =>
         ({ ...fromState, getAttribute: (name: string) => from.props[name] == null ? null : String(from.props[name]) });
@@ -170,13 +182,17 @@ export function createNativeRenderer(driver: NativeDriver) {
         button: 0,
         ...(handler === "onClick" && driver.position ? driver.position(node.handle) : NO_POSITION),
         ...(node.tag === "a" || !driver.modifiers ? NO_MODIFIERS : driver.modifiers()),
+        key: key?.key,
+        code: key?.code,
+        repeat: key?.repeat,
         defaultPrevented: false,
         preventDefault() { event.defaultPrevented = true; },
-        stopPropagation() { stopped = true; },
+        stopPropagation() { stopped = true; key?.stopPropagation(); },
       };
       if (typeof callback === "function") callback(event);
-      for (let around = handler === "onClick" ? node.parent : null; around && !stopped; around = around.parent) {
-        const outer = around.props.onClick;
+      const bubbles = handler === "onClick" || handler === "onKeyDown";
+      for (let around = bubbles ? node.parent : null; around && !stopped; around = around.parent) {
+        const outer = around.props[handler];
         if (typeof outer === "function") outer({ ...event, currentTarget: targetOf(around, { value: "", checked: false }) });
       }
       if (handler === "onClick" && node.kind === "Button" && node.props.type !== "button") submit(node);

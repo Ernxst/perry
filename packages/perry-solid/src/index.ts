@@ -12,10 +12,10 @@ import {
   widgetSetBackgroundColor, setCornerRadius, setPadding, widgetSetMaxWidth, widgetSetMaxWidthAlignment, widgetGetFrame, widgetMatchParentWidth, widgetMatchParentHeight, widgetSetHugging, stackSetAlignment, stackSetDistribution,
   widgetSetBorderWidth, widgetSetBorderColor, stateCreate, stateSet, stateBindSlider,
   widgetSetDynamicBackgroundColor, widgetSetDynamicBorderColor, textSetDynamicColor,
-  currentModifiers, widgetSetOnMouseDown, sheetCreate, sheetPresent, sheetDismiss, widgetSetOnResize, type PointerEvent, type State, type Widget,
+  currentModifiers, widgetSetOnMouseDown, widgetSetOnWindowMouseDown, sheetCreate, sheetPresent, sheetDismiss, widgetSetOnResize, type PointerEvent, type State, type Widget,
 } from "perry/ui";
 import { openURL } from "perry/system";
-import { CanvasElement } from "perry-browser";
+import { CanvasElement, setFocusedKeys } from "perry-browser";
 import { createNativeRenderer, type ControlState, type Emit, type NativeDriver, type Props, type TextRun } from "./renderer.ts";
 import type { JSX } from "./jsx-runtime.ts";
 import type { StackProps } from "./types.ts";
@@ -583,6 +583,35 @@ function trackPresses(widget: Widget): void {
 }
 let windowWidget = 0 as Widget;
 let pageWidget = 0 as Widget;
+
+// AppKit gives keyboard focus only to controls, so an element with onKeyDown takes focus here: a
+// press inside it focuses it, unless a smaller one also holds the point, and a press elsewhere
+// in its window blurs it. Every registered widget in the pressed window hears the press, in no
+// set order, so each decides against the one already focused.
+const keyed = new Map<number, Emit>();
+let focused = 0;
+function holdsPoint(widget: Widget, x: number, y: number): boolean {
+  const left = widgetGetFrame(widget, 0);
+  const top = widgetGetFrame(widget, 1);
+  return x >= left && y >= top && x <= left + widgetGetFrame(widget, 2) && y <= top + widgetGetFrame(widget, 3);
+}
+const area = (widget: Widget) => widgetGetFrame(widget, 2) * widgetGetFrame(widget, 3);
+function takeKeys(widget: Widget, emit: Emit): void {
+  if (!keyed.has(widget)) widgetSetOnWindowMouseDown(widget, (x, y) => {
+    if (!holdsPoint(widget, x, y)) {
+      if (focused === widget) focused = 0;
+    } else if (!(focused && focused !== widget && holdsPoint(focused as Widget, x, y) && area(focused as Widget) <= area(widget))) {
+      focused = widget;
+    }
+  });
+  keyed.set(widget, emit);
+}
+setFocusedKeys(event => {
+  const emit = keyed.get(focused);
+  if (!emit || event.type !== "keydown") return;
+  const detail = { key: event.key, code: event.code, repeat: event.repeat, stopPropagation: () => event.stopPropagation() };
+  if (!emit("onKeyDown", { value: "", checked: false }, detail)) event.preventDefault();
+});
 
 // Each widgetSetOnClick adds another gesture recognizer to the view, so a widget gets one,
 // shared by its own behaviour, such as a link opening, and a handler.
@@ -1167,6 +1196,7 @@ const driver: NativeDriver = {
   // An element takes clicks only once it has a handler, so one without a handler leaves them to
   // the element around it. A button and the controls report their own events.
   listen(handle, kind, handler, emit) {
+    if (handler === "onKeyDown") return takeKeys(handle as Widget, emit);
     if (handler === "onClick") trackPresses(handle as Widget);
     if (handler !== "onClick" || listening.has(handle) || links.has(handle) || kind === "Button" || controls.has(handle) || options.has(handle)) return;
     listening.add(handle);

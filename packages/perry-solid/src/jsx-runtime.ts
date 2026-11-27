@@ -46,7 +46,10 @@ export namespace JSX {
    * control has a handler, clicking the control fires that handler instead.
    *
    * `onKeyDown`, with `tabIndex` and `role`, lets a keyboard reach the element on the web. Natively
-   * the element can't take focus, so it never fires.
+   * an element with `onKeyDown` takes focus when pressed, unless a smaller one inside it has
+   * `onKeyDown` too, and loses it on a press elsewhere. Its key events bubble through the elements
+   * around it and then to `document`. Tab doesn't move focus, nothing draws a focus ring, and
+   * `tabIndex` does nothing.
    */
   interface Clickable {
     onClick?: (event: unknown) => void;
